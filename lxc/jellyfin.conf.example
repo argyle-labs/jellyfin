@@ -1,0 +1,52 @@
+# Proxmox LXC config for Jellyfin — /etc/pve/lxc/<vmid>.conf
+#
+# Get GPU device GIDs from the Proxmox host:
+#   stat -c '%g' /dev/dri/renderD128   # usually 44 on Debian/Ubuntu PVE hosts
+#   stat -c '%g' /dev/dri/card0
+
+# ─── MINIMAL (software transcode only, no GPU) ────────────────────────────────
+#
+# arch: amd64
+# cores: 2
+# memory: 2048
+# swap: 512
+# hostname: jellyfin
+# ostype: debian
+# rootfs: local-lvm:vm-<vmid>-disk-0,size=16G
+# net0: name=eth0,bridge=vmbr0,ip=dhcp,firewall=1
+# lxc.apparmor.profile: unconfined
+# lxc.seccomp.profile:
+# lxc.mount.entry: tmpfs dev/shm tmpfs nodev,nosuid,size=2g,mode=1777,create=dir 0 0
+# mp0: /mnt/pool/data,mp=/mnt/media,ro=1
+# mp1: /opt/jellyfin/config,mp=/config
+
+# ─── RECOMMENDED (Intel/AMD GPU hardware transcode) ───────────────────────────
+#
+# Right-sized for Intel GPU transcoding: 4 cores / 4 GB RAM / shm 4g.
+# NOT 16 GB — oversizing was a past incident, not a requirement. Jellyfin's
+# transcode working set lives in /cache + shm, not resident RAM.
+
+arch: amd64
+cores: 4
+memory: 4096
+swap: 0
+hostname: jellyfin
+ostype: debian
+rootfs: local-lvm:vm-<vmid>-disk-0,size=16G
+net0: name=eth0,bridge=vmbr0,ip=dhcp,firewall=1
+
+# AppArmor unconfined required for GPU device access.
+# Note: nesting is not needed for native Jellyfin installs (no Docker).
+lxc.apparmor.profile: unconfined
+lxc.seccomp.profile:
+
+# Shared memory for transcode buffers — 4GB for hardware transcode
+lxc.mount.entry: tmpfs dev/shm tmpfs nodev,nosuid,size=4g,mode=1777,create=dir 0 0
+
+# GPU passthrough — GIDs must match host (verify with stat -c '%g' /dev/dri/renderD128)
+dev0: /dev/dri/renderD128,gid=44
+dev1: /dev/dri/card0,gid=44
+
+# Mount points
+mp0: /mnt/pool/data,mp=/mnt/media,ro=1
+mp1: /opt/jellyfin/config,mp=/config
