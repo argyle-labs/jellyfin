@@ -1,0 +1,19 @@
+services:
+  jellyfin:
+    image: ghcr.io/argyle-labs/jellyfin:latest
+    container_name: jellyfin
+    network_mode: host
+    restart: unless-stopped
+    shm_size: 4g
+    environment:
+      JELLYFIN_UID: "1000"
+      JELLYFIN_GID: "1000"
+      LIBVA_DRIVER_NAME: auto   # auto-detects Intel iHD/i965 or AMD radeonsi
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /opt/jellyfin/config:/config
+      - /opt/jellyfin/cache:/cache
+      - /mnt/media:/mnt/media:ro
+    devices:
+      - /dev/dri/renderD128
+      - /dev/dri/card0
