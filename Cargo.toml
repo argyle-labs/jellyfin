@@ -7,6 +7,10 @@ build = "build.rs"
 [lib]
 name = "jellyfin"
 path = "src/lib.rs"
+# `cdylib` is the orca plugin artifact orca's `plugin-loader` `dlopen`s;
+# `rlib` retains the in-crate `#[cfg(test)]` harness + lets the workspace use it
+# as a normal Rust lib.
+crate-type = ["cdylib", "rlib"]
 
 # Jellyfin media-server plugin. Typed client codegenned by progenitor from
 # the vendored upstream spec (`specs/jellyfin-openapi-12.0.0.json`, OpenAPI
@@ -44,6 +48,12 @@ plugin-toolkit = { git = "https://github.com/scottdkey/orca", tag = "v0.0.8-rc.7
 serde       = { version = "1", features = ["derive"] }
 serde_json  = "1"
 thiserror   = "2"
+
+# The `#[export_root_module]` macro (re-exported by the toolkit) expands to bare
+# `::abi_stable` paths in this crate's root, so abi_stable must be a direct dep.
+# Pinned to the orca workspace version (0.11) so the layout hash baked into the
+# cdylib matches what orca's plugin-loader checks at load time.
+abi_stable = "0.11"
 
 progenitor-client = "0.14"
 futures-core = "0.3"
