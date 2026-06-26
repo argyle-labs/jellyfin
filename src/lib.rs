@@ -33,7 +33,6 @@ pub mod lifecycle;
 pub mod tools;
 
 use plugin_toolkit::http::{Client as HttpClient, HttpError, Response};
-use plugin_toolkit::thiserror::Error;
 
 use crate::diag::{RawSession, SessionTranscodeHealth};
 
@@ -64,16 +63,37 @@ impl Config {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum JellyfinError {
-    #[error(transparent)]
-    Http(#[from] HttpError),
-    #[error("decode {what}: {source}")]
+    Http(HttpError),
     Decode {
         what: &'static str,
-        #[source]
         source: plugin_toolkit::serde_json::Error,
     },
+}
+
+impl std::fmt::Display for JellyfinError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JellyfinError::Http(e) => write!(f, "{e}"),
+            JellyfinError::Decode { what, source } => write!(f, "decode {what}: {source}"),
+        }
+    }
+}
+
+impl std::error::Error for JellyfinError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            JellyfinError::Http(e) => Some(e),
+            JellyfinError::Decode { source, .. } => Some(source),
+        }
+    }
+}
+
+impl From<HttpError> for JellyfinError {
+    fn from(e: HttpError) -> Self {
+        JellyfinError::Http(e)
+    }
 }
 
 /// Server identity from `/System/Info`. Derives `JsonSchema` because the

@@ -434,10 +434,12 @@ async fn restore_config(args: JellyfinRestoreArgs) -> Result<JellyfinRestoreOutp
     })
 }
 
-/// UTC timestamp `YYYYMMDD-HHMMSS` for archive names. Uses chrono (already a
-/// plugin dep via progenitor's date-time formats).
+/// UTC timestamp `YYYYMMDD-HHMMSS` for archive names. chrono is reached through
+/// the toolkit re-export so the plugin carries no direct chrono dep.
 fn now_stamp() -> String {
-    chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string()
+    plugin_toolkit::chrono::Utc::now()
+        .format("%Y%m%d-%H%M%S")
+        .to_string()
 }
 
 #[cfg(test)]

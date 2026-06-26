@@ -7,6 +7,7 @@
 //! in-crate `Client` unit tests do.
 
 use jellyfin::{Client, Config};
+use plugin_toolkit::serde_json;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
