@@ -234,6 +234,91 @@ cargo build
 cargo test
 ```
 
+### The two-dependency rule
+
+A compliant orca plugin's `[dependencies]` is **exactly two crates**:
+
+| Dep | Why it is allowed |
+|---|---|
+| `plugin-toolkit` | The single orca gateway. Every other crate the plugin would reach for — serde, serde_json, schemars, clap, thiserror, chrono, uuid, reqwest, anyhow, tokio, tracing, and the whole progenitor/graphql runtime — is re-exported through `plugin_toolkit::*` / its prelude, injected by the `#[plugin_struct]` / `#[orca_tool]` / `endpoint_resource!` macros, or rewritten into the build-time generated client by `plugin-toolkit-build`. The plugin source names **no** external crate through this dep. |
+| `abi_stable` | **The one genuine non-toolkit dependency, and it cannot be removed.** See below. |
+
+Everything else (the integration-test crate's deps — `tokio` / `wiremock` /
+`tempfile`) lives under `[dev-dependencies]` and is outside the rule: dev-deps
+never ship in the cdylib.
+
+### Why `abi_stable` is the unavoidable exception
+
+orca loads external plugins as **cdylibs it `dlopen`s at runtime** — not as
+statically linked crates. That crossing is a C-ABI FFI boundary, and the data
+that crosses it (the root module, the version header, the layout hashes the
+loader checks before it trusts the `.so`) must have a **guaranteed, stable memory
+layout**. Rust's native `repr(Rust)` gives no such guarantee across independent
+compilations, so the boundary types come from `abi_stable` (`RString`, `RStr`,
+`RResult`, `PrefixTypeTrait`, …).
+
+The decisive detail: `#[export_root_module]` — the attribute that emits the
+single symbol orca's loader looks up — **expands to bare `::abi_stable::*` paths
+in this crate's own root.** There is no source path for the toolkit to redirect
+and no `crate =` attribute to retarget; the macro hard-codes the crate name into
+generated code that lives *in the plugin*, not in generated-and-rewritten client
+code. So unlike serde/reqwest/progenitor (whose paths `plugin-toolkit-build`
+rewrites to `::plugin_toolkit::*`), `abi_stable` genuinely must be a direct dep.
+
+It is pinned to **the same `abi_stable` version the toolkit uses** (`0.11`) so the
+layout hash baked into the cdylib matches what orca's `plugin-loader` validates at
+load time. A version skew here is not a compile error — it is a load-time
+rejection. Keep it in lockstep with the toolkit.
+
+The whole abi boundary is isolated to one file,
+[`src/abi_export.rs`](src/abi_export.rs): the only place `abi_stable` is named,
+the only place the JSON dispatch payload type is aliased, and the only place the
+`disallowed_types` lint is suppressed.
+
+### Authoring a fresh plugin from this template
+
+This repo is the canonical template. To start a new `<name>` plugin:
+
+1. **Scaffold the crate.** Copy this repo's skeleton: `Cargo.toml`,
+   `.cargo/config.toml`, `build.rs`, `src/abi_export.rs`, and a `src/` tree
+   (`lib.rs`, `tools.rs`, plus `diag.rs` / `lifecycle.rs` as the surface needs).
+   Keep `[lib] crate-type = ["cdylib", "rlib"]` — `cdylib` is the artifact orca
+   loads; `rlib` keeps the in-crate test harness.
+
+2. **Set `[dependencies]` to the two allowed crates** — `plugin-toolkit` (git
+   dep on the orca rc tag) and `abi_stable = "0.11"` — nothing else. Put test
+   tooling under `[dev-dependencies]`, including `plugin-toolkit` again if the
+   integration-test crate needs `serde_json::json!` for fixtures.
+
+3. **Wire the codegen client (if the upstream has a spec).** Drop the spec under
+   `specs/`, prune + generate it in `build.rs` via
+   `plugin_toolkit_build::openapi::generate_one` (OpenAPI/progenitor) or
+   `plugin_toolkit_build::graphql` (GraphQL). The build step rewrites every
+   `serde` / `reqwest` / `progenitor_client` / `chrono` / … path in the generated
+   module to `::plugin_toolkit::*` and anchors the generated serde derives — so
+   the `include!`d module names no external crate. `include!` it as `mod api { … }`.
+
+4. **Write the surface against the toolkit only.** `use plugin_toolkit::prelude::*;`
+   for the common surface; reach `plugin_toolkit::http`, `plugin_toolkit::chrono`,
+   `plugin_toolkit::serde_json`, etc. explicitly where the prelude doesn't cover
+   it. Derive on hand-written types via `#[plugin_struct]` (or the explicit
+   `#[derive(plugin_toolkit::serde::Serialize, …)] #[serde(crate =
+   "plugin_toolkit::serde")]` form). **Do not** add a `thiserror` dep — hand-roll
+   `Display` + `std::error::Error` + `From` as `JellyfinError` does in
+   [`src/lib.rs`](src/lib.rs); `?` conversion rides anyhow's blanket `From`.
+
+5. **Update `abi_export.rs` metadata** — change `target_software`,
+   `target_compat`, `orca_compat`, and `TOOL_PREFIX` to your `<name>.` namespace.
+   Leave the rest of the FFI plumbing as-is.
+
+6. **Prove the rule holds** before committing:
+   ```sh
+   cargo build && cargo clippy --all-targets -- -D warnings && cargo test
+   cargo tree -e normal --depth 1   # MUST show only plugin-toolkit + abi_stable
+   ```
+   Any third crate under `[dependencies]` is a toolkit gap — file it against
+   `plugin-toolkit` and route through it rather than adding the dep here.
+
 ---
 
 ## Backup & Restore
