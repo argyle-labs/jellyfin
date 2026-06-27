@@ -1,7 +1,7 @@
 # jellyfin
 
 Self-hosted Jellyfin media server with automatic GPU detection and hardware
-transcoding — plus a first-class [orca](https://github.com/scottdkey/orca)
+transcoding — plus a first-class [orca](https://github.com/argyle-labs/orca)
 plugin that owns the full lifecycle (install, update, backup/restore) and live
 transcode-session diagnosis.
 
