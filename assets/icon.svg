@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="jellyfin (argyle-labs)">
+  <defs>
+    <clipPath id="tile"><rect x="16" y="16" width="480" height="480" rx="108"/></clipPath>
+    <!-- JELLYFIN argyle: purple + teal -->
+    <pattern id="argyle" width="120" height="160" patternUnits="userSpaceOnUse">
+      <rect width="120" height="160" fill="#140A28"/>
+      <polygon points="60,0 120,80 60,160 0,80" fill="#3A2A66"/>
+      <polygon points="0,0 60,80 0,160" fill="#271A4A"/>
+      <polygon points="120,0 60,80 120,160" fill="#271A4A"/>
+      <g stroke="#2BD3D3" stroke-width="2" opacity="0.32" stroke-dasharray="6 7">
+        <path d="M60 -80 L200 80 M60 -80 L-80 80 M60 80 L200 240 M60 80 L-80 240 M60 240 L200 400 M60 240 L-80 400"/>
+      </g>
+    </pattern>
+    <!-- official Jellyfin gradient -->
+    <linearGradient id="jf" gradientUnits="userSpaceOnUse" x1="110.25" y1="213.3" x2="496.14" y2="436.09">
+      <stop offset="0" stop-color="#AA5CC3"/>
+      <stop offset="1" stop-color="#00A4DC"/>
+    </linearGradient>
+  </defs>
+
+  <g clip-path="url(#tile)">
+    <rect x="16" y="16" width="480" height="480" fill="url(#argyle)"/>
+  </g>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="none" stroke="#2BD3D3" stroke-width="6"/>
+
+  <!-- official Jellyfin mark (CC BY-SA 4.0, Jellyfin contributors), scaled to fit the tile -->
+  <g transform="translate(256 262) scale(0.72) translate(-256 -256)">
+    <path d="M256,201.6c-20.4,0-86.2,119.3-76.2,139.4s142.5,19.9,152.4,0S276.5,201.6,256,201.6z" fill="url(#jf)"/>
+    <path d="M256,23.3c-61.6,0-259.8,359.4-229.6,420.1s429.3,60,459.2,0S317.6,23.3,256,23.3z
+             M406.5,390.8c-19.6,39.3-281.1,39.8-300.9,0s110.1-275.3,150.4-275.3S426.1,351.4,406.5,390.8z" fill="url(#jf)"/>
+  </g>
+</svg>
