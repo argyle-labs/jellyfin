@@ -1,7 +1,7 @@
 # jellyfin
 
 Self-hosted Jellyfin media server with automatic GPU detection and hardware
-transcoding — plus a first-class [orca](https://github.com/scottdkey/orca)
+transcoding — plus a first-class [orca](https://github.com/argyle-labs/orca)
 plugin that owns the full lifecycle (install, update, backup/restore) and live
 transcode-session diagnosis.
 
@@ -195,6 +195,26 @@ docker exec jellyfin /usr/lib/jellyfin-ffmpeg/vainfo --display drm --device /dev
 ```
 
 ---
+
+## Podman / Compose
+
+The same [`compose.yml`](compose.yml) runs under Podman. Because this service
+uses device passthrough (`/dev/dri`) and `network_mode: host`, run it
+**rootful** for hardware access:
+
+```sh
+sudo podman compose -f compose.yml up -d
+# older Podman: sudo podman-compose -f compose.yml up -d
+```
+
+Rootless Podman works for software-only transcode, but GPU devices and host
+networking are simplest rootful. Persist across reboots with a generated unit:
+
+```sh
+sudo podman generate systemd --new --name jellyfin \
+  > /etc/systemd/system/jellyfin.service
+sudo systemctl enable --now jellyfin
+```
 
 ## orca plugin
 
