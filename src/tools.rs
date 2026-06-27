@@ -21,7 +21,7 @@
 //! the toolkit as the single gateway to the orca system.
 #![allow(clippy::disallowed_types)]
 
-use plugin_toolkit::notifications::{emit, registered_backend_names, Event, EventClass, Severity};
+use plugin_toolkit::notify::{emit, registered_backend_names, Event, EventClass, Severity};
 use plugin_toolkit::prelude::*;
 
 use crate::diag::SessionTranscodeHealth;
