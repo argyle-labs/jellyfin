@@ -76,6 +76,14 @@ extern "C" fn manifest() -> RString {
     RString::from(sj::to_string(&defs).unwrap_or_else(|_| "[]".to_string()))
 }
 
+/// Domain backends this plugin contributes. Jellyfin is a pure tool-surface
+/// plugin (no storage/etc. backend), so it contributes none — an empty array,
+/// identical to what the toolkit's per-field default would synthesize for a
+/// plugin that predates the `backends` ABI field.
+extern "C" fn backends() -> RString {
+    RString::from("[]")
+}
+
 /// Shared multi-thread runtime driving the async tool bodies behind the
 /// synchronous FFI `invoke`. Built once on first call and kept for the process
 /// lifetime so repeated invocations don't spin a fresh runtime each time.
@@ -141,6 +149,7 @@ fn export() -> PluginModRef {
         orca_compat,
         manifest,
         invoke,
+        backends,
     }
     .leak_into_prefix()
 }
