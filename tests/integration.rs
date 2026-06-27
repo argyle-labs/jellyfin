@@ -39,7 +39,10 @@ async fn auth_header_uses_mediabrowser_token_format() {
     // a mismatch falls through to a 404, surfacing as a client error below.
     Mock::given(method("GET"))
         .and(path("/Library/VirtualFolders"))
-        .and(header("authorization", "MediaBrowser Token=\"secret-token\""))
+        .and(header(
+            "authorization",
+            "MediaBrowser Token=\"secret-token\"",
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             { "Name": "Movies", "CollectionType": "movies", "Locations": ["/mnt/media/movies"] }
         ])))
@@ -63,7 +66,10 @@ async fn unreachable_server_errors() {
         server.uri()
     };
     let result = Client::new(Config::new(uri, "tok")).server_info().await;
-    assert!(result.is_err(), "an unreachable server must surface as an error");
+    assert!(
+        result.is_err(),
+        "an unreachable server must surface as an error"
+    );
 }
 
 #[tokio::test]
@@ -77,7 +83,9 @@ async fn auth_failure_surfaces_as_error() {
     // The http layer treats a non-2xx as an error, so an unauthorized request
     // surfaces as Err rather than silently parsing an empty body — the memory
     // guard reads this as "not reachable / not healthy".
-    let live = Client::new(Config::new(server.uri(), "bad")).liveness().await;
+    let live = Client::new(Config::new(server.uri(), "bad"))
+        .liveness()
+        .await;
     assert!(live.is_err(), "a 401 must surface as an auth error");
     let parsed = Client::new(Config::new(server.uri(), "bad"))
         .server_info()
@@ -96,7 +104,10 @@ async fn malformed_response_errors() {
     let result = Client::new(Config::new(server.uri(), "tok"))
         .transcode_health()
         .await;
-    assert!(result.is_err(), "a non-JSON body must surface as a decode error");
+    assert!(
+        result.is_err(),
+        "a non-JSON body must surface as a decode error"
+    );
 }
 
 #[tokio::test]
@@ -108,6 +119,11 @@ async fn five_hundred_under_pressure_errors_liveness() {
         .mount(&server)
         .await;
     // The memory guard reads a 5xx liveness as pressure: liveness must error.
-    let result = Client::new(Config::new(server.uri(), "tok")).liveness().await;
-    assert!(result.is_err(), "a 503 must surface as an error for the memory guard");
+    let result = Client::new(Config::new(server.uri(), "tok"))
+        .liveness()
+        .await;
+    assert!(
+        result.is_err(),
+        "a 503 must surface as an error for the memory guard"
+    );
 }

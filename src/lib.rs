@@ -120,12 +120,7 @@ pub struct ServerInfo {
 }
 
 /// One configured library from `/Library/VirtualFolders`.
-#[derive(
-    Debug,
-    Clone,
-    plugin_toolkit::serde::Serialize,
-    plugin_toolkit::serde::Deserialize,
-)]
+#[derive(Debug, Clone, plugin_toolkit::serde::Serialize, plugin_toolkit::serde::Deserialize)]
 #[serde(crate = "plugin_toolkit::serde")]
 #[serde(rename_all = "PascalCase")]
 pub struct VirtualFolder {
@@ -306,12 +301,10 @@ mod tests {
             .respond_with(ResponseTemplate::new(503))
             .mount(&down)
             .await;
-        assert!(
-            Client::new(Config::new(down.uri(), "tok"))
-                .liveness()
-                .await
-                .is_err()
-        );
+        assert!(Client::new(Config::new(down.uri(), "tok"))
+            .liveness()
+            .await
+            .is_err());
     }
 
     #[tokio::test]
