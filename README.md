@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon-256.png" width="120" alt="jellyfin" />
+</p>
+
 # jellyfin
 
 Self-hosted Jellyfin media server with automatic GPU detection and hardware
