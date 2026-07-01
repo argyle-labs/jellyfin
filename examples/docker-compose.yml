@@ -1,0 +1,30 @@
+# Jellyfin - Open Source Media Server
+# docs: ../../docs/services/jellyfin.md
+
+services:
+  jellyfin:
+    container_name: jellyfin
+    image: jellyfin/jellyfin:${JELLYFIN_IMAGE_TAG:-latest}
+    environment:
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-America/Denver}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8096/web/index.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    ports:
+      - "8096:8096"
+    volumes:
+      - ${JELLYFIN_CONFIG_PATH:-./config}:/config
+      - ${MEDIA_PATH:-/mnt/<pool>/data/media}:/data
+    restart: unless-stopped
+    # Intel QuickSync hardware transcoding via iGPU passthrough
+    devices:
+      - /dev/dri:/dev/dri
+    # NVIDIA GPU (alternative):
+    # runtime: nvidia
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=all
