@@ -1,5 +1,11 @@
 <p align="center">
-  <img src="assets/icon-256.png" width="120" alt="jellyfin" />
+  <img src="https://raw.githubusercontent.com/argyle-labs/jellyfin/main/assets/icon-256.png" width="120" alt="jellyfin" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/argyle-labs/jellyfin/actions/workflows/ci.yml"><img src="https://github.com/argyle-labs/jellyfin/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/argyle-labs/jellyfin/actions/workflows/build.yml"><img src="https://github.com/argyle-labs/jellyfin/actions/workflows/build.yml/badge.svg" alt="Build and Push" /></a>
+  <a href="https://github.com/argyle-labs/jellyfin/actions/workflows/release.yml"><img src="https://github.com/argyle-labs/jellyfin/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
 </p>
 
 # jellyfin
@@ -38,8 +44,17 @@ docker compose up -d          # or: podman compose up -d
 ```
 
 Jellyfin listens on **:8096**. Podman uses the same files (`podman compose up -d`).
-Prefer the self-built image? `docker build -t jellyfin .` and point the compose
-`image:` at it.
+
+**Not tied to our image.** `ghcr.io/argyle-labs/jellyfin` is just a convenience
+build. Swap the `image:` for any equivalent — you don't have to use ours:
+
+| Image | Notes |
+|---|---|
+| `ghcr.io/argyle-labs/jellyfin` | this repo's slim build (`Dockerfile`); Intel VAAPI ready |
+| `jellyfin/jellyfin` | official upstream image ([`examples/docker-compose.yml`](examples/docker-compose.yml)) |
+| `lscr.io/linuxserver/jellyfin` | LinuxServer.io build (uses `PUID`/`PGID`, `/config` layout) |
+
+Or build your own: `docker build -t jellyfin .`
 
 ### LXC (Proxmox)
 
