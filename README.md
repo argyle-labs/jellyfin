@@ -77,9 +77,12 @@ VM. Pass through the GPU (`/dev/dri`, or an NVIDIA card) for hardware transcode.
 
 ### Unraid
 
-*Docker → Add Container* with image `ghcr.io/argyle-labs/jellyfin` (or
-`jellyfin/jellyfin`), port `8096`, `/config` + `/cache` app volumes, your media
-share read-only, and device `/dev/dri` for Intel/AMD transcoding.
+Install from **Community Applications** (the *Apps* tab) — search **Jellyfin**
+and add the template; it wires up the web UI, `/config`, and media shares for you.
+Add `/dev/dri` (Settings → Docker, or the template's extra device) for Intel/AMD
+hardware transcoding. To use this repo's image instead, set the template's
+*Repository* to `ghcr.io/argyle-labs/jellyfin`. (Manual fallback: *Docker → Add
+Container* with that image, port `8096`, `/config` + `/cache`, media read-only.)
 
 ### Dependencies
 
