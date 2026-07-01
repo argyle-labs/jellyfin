@@ -1,30 +1,40 @@
-# Jellyfin - Open Source Media Server
-# docs: ../../docs/services/jellyfin.md
+# Jellyfin — this repo's self-built image (ghcr.io/argyle-labs/jellyfin).
+#
+# ONE implementation. GPU and transcode-scratch are independent OPTIONS you mix
+# and match — not separate setups:
+#   • GPU        Intel/AMD via /dev/dri (default) — OR — NVIDIA via the nvidia runtime
+#   • Transcode  Jellyfin writes segments under /cache; back it with a disk path
+#                (default) — OR — tmpfs (RAM), orthogonal to the GPU choice
+#
+# For the upstream image instead of ours, see docker-compose.upstream.yml.
+# Runs the same with podman: `podman compose up -d`. A healthcheck is already
+# baked into the image (Dockerfile).
 
 services:
   jellyfin:
+    image: ghcr.io/argyle-labs/jellyfin:latest
     container_name: jellyfin
-    image: jellyfin/jellyfin:${JELLYFIN_IMAGE_TAG:-latest}
-    environment:
-      - PUID=${PUID:-99}
-      - PGID=${PGID:-100}
-      - TZ=${TZ:-America/Denver}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8096/web/index.html"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    ports:
-      - "8096:8096"
-    volumes:
-      - ${JELLYFIN_CONFIG_PATH:-./config}:/config
-      - ${MEDIA_PATH:-/mnt/<pool>/data/media}:/data
+    network_mode: host          # Jellyfin serves on :8096 (http://<host>:8096)
     restart: unless-stopped
-    # Intel QuickSync hardware transcoding via iGPU passthrough
-    devices:
-      - /dev/dri:/dev/dri
-    # NVIDIA GPU (alternative):
-    # runtime: nvidia
-    # environment:
-    #   - NVIDIA_VISIBLE_DEVICES=all
+    shm_size: 4g
+    environment:
+      JELLYFIN_UID: "1000"
+      JELLYFIN_GID: "1000"
+      LIBVA_DRIVER_NAME: auto    # auto-detects Intel iHD/i965 or AMD radeonsi
+      # ── NVIDIA option ── uncomment these + `runtime: nvidia` below,
+      #    and remove the `devices:` block (that's the Intel/AMD path):
+      # NVIDIA_VISIBLE_DEVICES: all
+      # NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    # runtime: nvidia            # NVIDIA option — needs nvidia-container-toolkit on the host
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /opt/jellyfin/config:/config
+      - /opt/jellyfin/cache:/cache        # disk transcode scratch (default)
+      - /mnt/media:/mnt/media:ro
+    devices:                     # Intel/AMD GPU — omit on an NVIDIA-only host
+      - /dev/dri/renderD128
+      - /dev/dri/card0
+    # ── tmpfs (RAM) transcode option ── delete the /cache volume line above and
+    #    uncomment this to keep transcode scratch in RAM (raise shm_size to match):
+    # tmpfs:
+    #   - /cache:size=4g,mode=1777

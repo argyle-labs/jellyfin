@@ -26,32 +26,32 @@ can run Jellyfin **without orca** on docker, podman, an LXC, a VM, or Unraid.
 ### Docker / Podman
 
 The image (`ghcr.io/argyle-labs/jellyfin`, built from [`Dockerfile`](Dockerfile)
-on `debian:12-slim`) runs `network_mode: host` with `/dev/dri` passed through for
-Intel/AMD VAAPI. Pick the example that matches your hardware:
-
-| Example | For |
-|---|---|
-| [`examples/docker-compose.basic.yml`](examples/docker-compose.basic.yml) | Intel / AMD iGPU (VAAPI, `/dev/dri`) |
-| [`examples/docker-compose.nvidia.yml`](examples/docker-compose.nvidia.yml) | NVIDIA (NVENC, needs `nvidia-container-toolkit`) |
-| [`examples/docker-compose.tmpfs-transcode.yml`](examples/docker-compose.tmpfs-transcode.yml) | RAM-backed transcode scratch |
-| [`examples/docker-compose.dockge.yml`](examples/docker-compose.dockge.yml) | Managed via Dockge (with healthcheck) |
-| [`examples/docker-compose.yml`](examples/docker-compose.yml) | Plain upstream `jellyfin/jellyfin` image |
+on `debian:12-slim`) runs `network_mode: host` on **:8096**
+(`http://<host>:8096`).
 
 ```sh
-cp examples/docker-compose.basic.yml compose.yml
+cp examples/docker-compose.yml compose.yml
 # edit the media mount + /opt/jellyfin paths, then:
 docker compose up -d          # or: podman compose up -d
 ```
 
-Jellyfin listens on **:8096**. Podman uses the same files (`podman compose up -d`).
+**One implementation, a few options.** [`examples/docker-compose.yml`](examples/docker-compose.yml)
+is the whole deployment; GPU and transcode-scratch are independent options you
+mix and match (all shown inline as comments), not separate setups:
 
-**Not tied to our image.** `ghcr.io/argyle-labs/jellyfin` is just a convenience
-build. Swap the `image:` for any equivalent — you don't have to use ours:
+- **GPU** — Intel/AMD via `/dev/dri` (default) **or** NVIDIA via the `nvidia`
+  runtime (needs `nvidia-container-toolkit`).
+- **Transcode scratch** — a disk path under `/cache` (default) **or** `tmpfs`
+  (RAM), independent of the GPU choice.
+
+**Not tied to our image.** `ghcr.io/argyle-labs/jellyfin` is a convenience build —
+swap `image:` for any equivalent. [`examples/docker-compose.upstream.yml`](examples/docker-compose.upstream.yml)
+is the same deployment on the official image:
 
 | Image | Notes |
 |---|---|
 | `ghcr.io/argyle-labs/jellyfin` | this repo's slim build (`Dockerfile`); Intel VAAPI ready |
-| `jellyfin/jellyfin` | official upstream image ([`examples/docker-compose.yml`](examples/docker-compose.yml)) |
+| `jellyfin/jellyfin` | official upstream image ([`examples/docker-compose.upstream.yml`](examples/docker-compose.upstream.yml)) |
 | `lscr.io/linuxserver/jellyfin` | LinuxServer.io build (uses `PUID`/`PGID`, `/config` layout) |
 
 Or build your own: `docker build -t jellyfin .`
@@ -124,7 +124,7 @@ orca jellyfin transcode_health --endpoint media   # is hardware transcode actual
 
 - `src/` — the orca plugin (the `jellyfin.*` tools above).
 - `Dockerfile` + `scripts/` — build the slim image (`install`/`entrypoint`/`backup`/`restore`/`configure`).
-- `examples/` — per-GPU compose files (Intel, NVIDIA, tmpfs, Dockge, upstream).
+- `examples/` — standalone compose: our image (`docker-compose.yml`) + the upstream image (`docker-compose.upstream.yml`), GPU/tmpfs shown inline as options.
 - `lxc/` — `provision.sh` one-command Proxmox LXC + `jellyfin.conf.example` + VAAPI shim.
 - `docs/` — [deploy-lxc.md](docs/deploy-lxc.md), the worked standalone LXC guide.
 - `specs/`, `tests/` — API specs + tests.
