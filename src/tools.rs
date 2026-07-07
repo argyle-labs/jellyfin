@@ -44,9 +44,8 @@ pub struct JellyfinEndpoint {
 
 // ── HTTP client helper ──────────────────────────────────────────────────────
 
-fn make_client(name: &str) -> Result<Client> {
-    let conn = runtime::open_db()?;
-    let row = endpoint_db::get(&conn, name)?
+pub(crate) fn make_client(name: &str) -> Result<Client> {
+    let row = endpoint_db::get(name)?
         .with_context(|| format!("jellyfin endpoint '{name}' not registered"))?;
     if !row.enabled {
         bail!("jellyfin endpoint '{name}' is disabled");

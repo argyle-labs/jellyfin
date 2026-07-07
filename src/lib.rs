@@ -30,6 +30,7 @@
 pub mod abi_export;
 pub mod diag;
 pub mod lifecycle;
+pub mod storage;
 pub mod tools;
 
 use plugin_toolkit::http::{Client as HttpClient, HttpError, Response};
@@ -196,6 +197,22 @@ impl Client {
     pub async fn restart(&self) -> Result<(), JellyfinError> {
         self.http
             .post(self.url("/System/Restart"))
+            .header(
+                "authorization",
+                format!("MediaBrowser Token=\"{}\"", self.cfg.token),
+            )
+            .send()
+            .await?;
+        Ok(())
+    }
+
+    /// Trigger a full library scan via `POST /Library/Refresh`. After a media
+    /// mount is corrected, this makes Jellyfin re-walk the library roots and
+    /// re-derive item paths + repopulate artwork — the Jellyfin-native remedy
+    /// for stale item state (no direct DB surgery, unlike Plex).
+    pub async fn refresh_libraries(&self) -> Result<(), JellyfinError> {
+        self.http
+            .post(self.url("/Library/Refresh"))
             .header(
                 "authorization",
                 format!("MediaBrowser Token=\"{}\"", self.cfg.token),
