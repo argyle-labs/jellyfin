@@ -31,7 +31,7 @@
 #![allow(clippy::disallowed_types)]
 
 use plugin_toolkit::prelude::*;
-use plugin_toolkit::tokio::process::Command;
+use plugin_toolkit::process::Command;
 
 use crate::lifecycle::Runtime;
 
@@ -152,32 +152,24 @@ pub fn classify(
 
 /// Base `pct exec <id> --` / `docker exec <id>` command.
 fn guest(runtime: Runtime, id: &str) -> Command {
-    let mut cmd = match runtime {
-        Runtime::Lxc => {
-            let mut c = Command::new("pct");
-            c.arg("exec").arg(id).arg("--");
-            c
-        }
-        Runtime::Docker => {
-            let mut c = Command::new("docker");
-            c.arg("exec").arg(id);
-            c
-        }
-    };
-    cmd.kill_on_drop(true);
-    cmd
+    match runtime {
+        Runtime::Lxc => Command::new("pct").arg("exec").arg(id).arg("--"),
+        Runtime::Docker => Command::new("docker").arg("exec").arg(id),
+    }
 }
 
 /// Run a guest command, returning stdout; a non-zero exit carries stderr.
-async fn capture(mut cmd: Command) -> Result<String> {
+async fn capture(cmd: Command) -> Result<String> {
     let out = cmd
         .output()
         .await
         .context("failed to spawn guest command")?;
-    if !out.status.success() {
+    if !out.status.success {
         bail!(
-            "guest command failed ({}): {}",
-            out.status,
+            "guest command failed (exit {}): {}",
+            out.status
+                .code
+                .map_or_else(|| "signal".to_string(), |c| c.to_string()),
             String::from_utf8_lossy(&out.stderr).trim()
         );
     }
@@ -199,8 +191,8 @@ fn lines(out: &str) -> Vec<String> {
 async fn check(runtime: Runtime, id: &str, config_root: &str) -> Result<StorageReport> {
     // Each `.mblink` file's contents is a real library path. `-exec sh -c` with
     // a trailing `echo` guarantees a newline between concatenated files.
-    let mut find = guest(runtime, id);
-    find.arg("find")
+    let find = guest(runtime, id)
+        .arg("find")
         .arg(config_root)
         .arg("-name")
         .arg("*.mblink")
@@ -215,15 +207,13 @@ async fn check(runtime: Runtime, id: &str, config_root: &str) -> Result<StorageR
         .arg(";");
     let roots = lines(&capture(find).await.context("read .mblink roots")?);
 
-    let mut mount_cmd = guest(runtime, id);
-    mount_cmd.arg("findmnt").arg("-rno").arg("TARGET");
+    let mount_cmd = guest(runtime, id).arg("findmnt").arg("-rno").arg("TARGET");
     let mount_targets = lines(&capture(mount_cmd).await.unwrap_or_default());
 
     // Probe each root's existence individually (paths may contain spaces).
     let mut unresolved = Vec::new();
     for root in &roots {
-        let mut test = guest(runtime, id);
-        test.arg("test").arg("-d").arg(root);
+        let test = guest(runtime, id).arg("test").arg("-d").arg(root);
         if capture(test).await.is_err() {
             unresolved.push(root.clone());
         }

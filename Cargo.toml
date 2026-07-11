@@ -11,10 +11,14 @@ category = "media"
 [lib]
 name = "jellyfin"
 path = "src/lib.rs"
-# `cdylib` is the orca plugin artifact orca's `plugin-loader` `dlopen`s;
 # `rlib` retains the in-crate `#[cfg(test)]` harness + lets the workspace use it
-# as a normal Rust lib.
-crate-type = ["cdylib", "rlib"]
+# as a normal Rust lib. The plugin ships as the `[[bin]]` below — a dynamic
+# subprocess the loader spawns, not a dlopened cdylib.
+crate-type = ["rlib"]
+
+[[bin]]
+name = "jellyfin"
+path = "src/main.rs"
 
 # Jellyfin media-server plugin. Typed client codegenned by progenitor from
 # the vendored upstream spec (`specs/jellyfin-openapi-12.0.0.json`, OpenAPI
@@ -33,20 +37,13 @@ crate-type = ["cdylib", "rlib"]
 # `#[plugin_struct]`/`#[orca_tool]`, or rewritten into the generated `api`
 # module by the build-time codegen (which redirects serde::/reqwest::/etc. to
 # ::plugin_toolkit::* and anchors the generated serde derives). The plugin
-# source names no external crate except `abi_stable` below.
+# source names no external crate.
 #
 # Pinned to the orca rc tag that carries the plugin-toolkit surface. REQUIRES an
 # rc >= the one with the OpenAPI codegen path-rewrite + the progenitor-runtime
 # re-exports. Until that rc is cut, the committed `[patch]` in
 # `.cargo/config.toml` resolves this to the local in-tree toolkit at ../orca.
 plugin-toolkit = { git = "https://github.com/argyle-labs/orca", branch = "main" }
-
-# The ONE genuine non-orca dep: `#[export_root_module]` expands to bare
-# `::abi_stable` paths in this crate's root (the cdylib FFI boundary the loader
-# dlopens), so it can't route through the toolkit. Pinned to the orca workspace
-# version (0.11) so the layout hash baked into the cdylib matches what orca's
-# plugin-loader checks at load time.
-abi_stable = "0.11"
 
 [dev-dependencies]
 # Dev-only: the integration-test crate (a separate crate from the lib) reaches
