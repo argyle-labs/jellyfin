@@ -4,19 +4,18 @@
 //! deploy lifecycle of a Jellyfin instance — provision, version bump, and
 //! config backup/restore — driving the host's container runtime
 //! (`pct` for Proxmox LXC, `docker` for Compose) and `tar` for the `/config`
-//! volume through `tokio::process::Command`. There is no parallel shell glue:
+//! volume through `plugin_toolkit::process::Command`. There is no parallel shell glue:
 //! the bootstrap scripts in `scripts/` + `lxc/` are the curl-bootstrap payload
 //! these tools orchestrate, and every capability is reachable as an orca tool.
 //!
 //! Imports flow through `plugin_toolkit::prelude::*` only — the toolkit is the
-//! single gateway. Process exec uses the toolkit's re-exported `tokio`.
+//! single gateway. Process exec uses the toolkit's orca-owned `process` module.
 #![allow(clippy::disallowed_types)]
 
 use std::path::Path;
-use std::process::Output;
 
 use plugin_toolkit::prelude::*;
-use plugin_toolkit::tokio::process::Command;
+use plugin_toolkit::process::{Command, Output};
 
 /// Where a Jellyfin instance is deployed — selects which runtime the lifecycle
 /// tools drive.
@@ -79,14 +78,21 @@ impl Channel {
 /// Run a command, capturing output, and map a non-zero exit to an error that
 /// carries stderr — the lifecycle tools surface the runtime's own message
 /// rather than a bare exit code.
-async fn run(cmd: &mut Command) -> Result<Output> {
+async fn run(cmd: Command) -> Result<Output> {
     let output = cmd
         .output()
         .await
         .with_context(|| "failed to spawn command".to_string())?;
-    if !output.status.success() {
+    if !output.status.success {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("command failed ({}): {}", output.status, stderr.trim());
+        bail!(
+            "command failed (exit {}): {}",
+            output
+                .status
+                .code
+                .map_or_else(|| "signal".to_string(), |c| c.to_string()),
+            stderr.trim()
+        );
     }
     Ok(output)
 }
@@ -169,29 +175,31 @@ async fn jellyfin_install(
                 .bootstrap_path
                 .clone()
                 .unwrap_or_else(|| "lxc/provision.sh".to_string());
-            let mut cmd = Command::new("bash");
-            cmd.arg(&script).arg(vmid.to_string());
-            cmd.arg("--config").arg(&args.config_path);
+            let mut cmd = Command::new("bash")
+                .arg(&script)
+                .arg(vmid.to_string())
+                .arg("--config")
+                .arg(&args.config_path);
             if let Some(media) = &args.media_path {
-                cmd.arg("--media").arg(media);
+                cmd = cmd.arg("--media").arg(media);
             }
             if args.no_gpu {
-                cmd.arg("--no-gpu");
+                cmd = cmd.arg("--no-gpu");
             }
-            run(&mut cmd).await?
+            run(cmd).await?
         }
         Runtime::Docker => {
             let compose = args
                 .bootstrap_path
                 .clone()
                 .unwrap_or_else(|| "compose.yml".to_string());
-            let mut cmd = Command::new("docker");
-            cmd.arg("compose")
+            let cmd = Command::new("docker")
+                .arg("compose")
                 .arg("-f")
                 .arg(&compose)
                 .arg("up")
                 .arg("-d");
-            run(&mut cmd).await?
+            run(cmd).await?
         }
     };
     Ok(JellyfinInstallOutput {
@@ -432,12 +440,11 @@ async fn restore_config(args: JellyfinRestoreArgs) -> Result<JellyfinRestoreOutp
     })
 }
 
-/// UTC timestamp `YYYYMMDD-HHMMSS` for archive names. chrono is reached through
-/// the toolkit re-export so the plugin carries no direct chrono dep.
+/// UTC timestamp `YYYYMMDD-HHMMSS` for archive names. Wall-clock time is reached
+/// through the toolkit's orca-owned `time` module so the plugin carries no
+/// direct datetime dep.
 fn now_stamp() -> String {
-    plugin_toolkit::chrono::Utc::now()
-        .format("%Y%m%d-%H%M%S")
-        .to_string()
+    plugin_toolkit::time::now().compact()
 }
 
 #[cfg(test)]
