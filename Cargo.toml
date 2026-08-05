@@ -43,19 +43,19 @@ path = "src/main.rs"
 # rc >= the one with the OpenAPI codegen path-rewrite + the progenitor-runtime
 # re-exports. Until that rc is cut, the committed `[patch]` in
 # `.cargo/config.toml` resolves this to the local in-tree toolkit at ../orca.
-plugin-toolkit = { git = "https://github.com/argyle-labs/orca", branch = "main" }
+plugin-toolkit = { git = "https://github.com/argyle-labs/orca", tag = "v0.1.7-rc.1" }
 
 [dev-dependencies]
 # Dev-only: the integration-test crate (a separate crate from the lib) reaches
 # serde_json's `json!` for mock bodies through the toolkit, same as the lib's
 # in-crate tests. Not a runtime dep.
-plugin-toolkit = { git = "https://github.com/argyle-labs/orca", branch = "main" }
+plugin-toolkit = { git = "https://github.com/argyle-labs/orca", tag = "v0.1.7-rc.1" }
 tokio    = { version = "1", features = ["macros", "rt-multi-thread"] }
 wiremock = "0.6"
 tempfile = "3"
 
 [build-dependencies]
-plugin-toolkit-build = { git = "https://github.com/argyle-labs/orca", branch = "main" }
+plugin-toolkit-build = { git = "https://github.com/argyle-labs/orca", tag = "v0.1.7-rc.1" }
 
 # Match orca's workspace lint floor: discarding a Result/Option via
 # `let _ = ...` was a load-bearing past incident, so keep it a hard error here
