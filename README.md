@@ -120,6 +120,23 @@ surface**, identical across **CLI, MCP, and REST** (generated from one
 orca jellyfin transcode_health --endpoint media   # is hardware transcode actually engaging?
 ```
 
+### Updating an LXC deployment
+
+`jellyfin.update --runtime lxc --vmid <id>` runs the in-CT package upgrade via
+`pct`. Because the orca daemon runs as a **non-root service user** on Proxmox
+hosts, the plugin escalates through `sudo -n pct` — so the host must grant that
+user passwordless `pct`. Once, on the Proxmox host:
+
+```sh
+# replace `orca` with the daemon's service user if different
+echo 'orca ALL=(root) NOPASSWD: /usr/sbin/pct' > /etc/sudoers.d/orca-pct
+chmod 440 /etc/sudoers.d/orca-pct
+visudo -c    # validate
+```
+
+Without this, the update fails fast with `sudo: a password is required` /
+`ipcc_send_rec ... Unable to load access control list` rather than hanging.
+
 ## Layout
 
 - `src/` — the orca plugin (the `jellyfin.*` tools above).
