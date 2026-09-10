@@ -75,6 +75,17 @@ impl Channel {
     }
 }
 
+/// A `pct` invocation escalated through `sudo -n`. The orca daemon runs as a
+/// non-root service user on Proxmox hosts, but `pct` needs root/pmxcfs access,
+/// so a bare `pct exec` fails with `ipcc_send_rec ... Unable to load access
+/// control list`. `sudo -n` (non-interactive) is a no-op when already root and
+/// escalates otherwise. The host must grant the service user NOPASSWD on `pct`
+/// (see README "Updating an LXC deployment"); without it this fails fast rather
+/// than hanging on a password prompt.
+fn pct() -> Command {
+    Command::new("sudo").arg("-n").arg("pct")
+}
+
 /// Run a command, capturing output, and map a non-zero exit to an error that
 /// carries stderr — the lifecycle tools surface the runtime's own message
 /// rather than a bare exit code.
@@ -285,10 +296,14 @@ async fn jellyfin_update(args: JellyfinUpdateArgs, _ctx: &ToolCtx) -> Result<Jel
         }
         Runtime::Lxc => {
             let vmid = args.vmid.context("`vmid` is required when runtime=lxc")?;
-            run(Command::new("pct").arg("exec").arg(vmid.to_string()).arg("--").arg("bash").arg(
+            run(pct().arg("exec").arg(vmid.to_string()).arg("--").arg("bash").arg(
                 "-c",
             ).arg(
-                "apt-get update && apt-get install -y --only-upgrade jellyfin && systemctl restart jellyfin",
+                // Upgrade the metapackage plus both split packages explicitly:
+                // `jellyfin` is a metapackage depending on `jellyfin-server` /
+                // `jellyfin-web`, and naming all three keeps the upgrade honest
+                // across the 10.x→ split-package layout.
+                "apt-get update && apt-get install -y --only-upgrade jellyfin jellyfin-server jellyfin-web && systemctl restart jellyfin",
             ))
             .await?
         }
