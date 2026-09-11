@@ -86,6 +86,40 @@ fn pct() -> Command {
     Command::new("sudo").arg("-n").arg("pct")
 }
 
+/// The remediation shown when the daemon can't drive `pct`. One place so the
+/// preflight tool, `install`, and `update` all speak with one voice.
+const PCT_GRANT_HINT: &str =
+    "the orca daemon (a non-root service user) cannot run privileged `pct` on this \
+     Proxmox host. Grant it passwordless pct — `/etc/sudoers.d/orca-pct`: \
+     `<service-user> ALL=(root) NOPASSWD: /usr/sbin/pct` (see README \
+     'Updating an LXC deployment'). A managed, converged grant is tracked in the \
+     orca `admin lxc-exec` design issue so this becomes automatic fleet-wide.";
+
+/// Probe whether the daemon can drive privileged `pct` before an LXC lifecycle
+/// op. Runs a harmless read (`pct status <vmid>` when known, else `pct list`) so
+/// `install` / `update` fail fast with [`PCT_GRANT_HINT`] instead of the raw
+/// `ipcc_send_rec ... Unable to load access control list` / `sudo: a password is
+/// required` a missing grant produces mid-run. Returns the probe's stdout on
+/// success.
+async fn pct_preflight(vmid: Option<u32>) -> Result<String> {
+    let probe = match vmid {
+        Some(v) => pct().arg("status").arg(v.to_string()),
+        None => pct().arg("list"),
+    };
+    match probe.output().await {
+        Ok(out) if out.status.success => {
+            Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        }
+        Ok(out) => bail!(
+            "{PCT_GRANT_HINT}\n(pct preflight failed: {})",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ),
+        Err(e) => {
+            bail!("failed to spawn `sudo pct` preflight ({e}); is `sudo` installed on this host?")
+        }
+    }
+}
+
 /// Run a command, capturing output, and map a non-zero exit to an error that
 /// carries stderr — the lifecycle tools surface the runtime's own message
 /// rather than a bare exit code.
@@ -182,6 +216,9 @@ async fn jellyfin_install(
     let output = match args.runtime {
         Runtime::Lxc => {
             let vmid = args.vmid.context("`vmid` is required when runtime=lxc")?;
+            // Fail fast if the daemon can't drive pct — provision.sh shells it.
+            // The CT does not exist yet, so probe general access, not this vmid.
+            pct_preflight(None).await?;
             let script = args
                 .bootstrap_path
                 .clone()
@@ -296,6 +333,8 @@ async fn jellyfin_update(args: JellyfinUpdateArgs, _ctx: &ToolCtx) -> Result<Jel
         }
         Runtime::Lxc => {
             let vmid = args.vmid.context("`vmid` is required when runtime=lxc")?;
+            // Fail fast with an actionable grant hint before the real exec.
+            pct_preflight(Some(vmid)).await?;
             run(pct().arg("exec").arg(vmid.to_string()).arg("--").arg("bash").arg(
                 "-c",
             ).arg(
@@ -312,6 +351,69 @@ async fn jellyfin_update(args: JellyfinUpdateArgs, _ctx: &ToolCtx) -> Result<Jel
         updated: true,
         image_tag: tag.to_string(),
         log: String::from_utf8_lossy(&output.stdout).into_owned(),
+    })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// jellyfin.lxc_preflight — is the privileged-pct prerequisite satisfied?
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[derive(
+    plugin_toolkit::clap::Args,
+    plugin_toolkit::serde::Serialize,
+    plugin_toolkit::serde::Deserialize,
+    plugin_toolkit::schemars::JsonSchema,
+)]
+#[serde(crate = "plugin_toolkit::serde")]
+#[schemars(crate = "plugin_toolkit::schemars")]
+pub struct JellyfinLxcPreflightArgs {
+    /// LXC vmid to probe (`pct status <vmid>`). Omit to check general `pct`
+    /// access (`pct list`) without targeting a specific container.
+    #[arg(long)]
+    #[serde(default)]
+    pub vmid: Option<u32>,
+}
+
+#[derive(
+    plugin_toolkit::serde::Serialize,
+    plugin_toolkit::serde::Deserialize,
+    plugin_toolkit::schemars::JsonSchema,
+)]
+#[serde(crate = "plugin_toolkit::serde")]
+#[schemars(crate = "plugin_toolkit::schemars")]
+#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
+pub struct JellyfinLxcPreflightOutput {
+    /// True when the daemon can run privileged `pct` on this host — the
+    /// prerequisite for `jellyfin.install` / `jellyfin.update --runtime lxc`.
+    pub capable: bool,
+    /// Probe stdout when capable; the remediation hint otherwise.
+    pub detail: String,
+}
+
+/// **Check the LXC update prerequisite.** Verifies the orca daemon can run
+/// privileged `pct` on this Proxmox host, the capability the LXC `install` /
+/// `update` paths depend on. Use it as a gate before an unattended LXC update
+/// (and in CI) so a missing sudo grant surfaces as a clear, up-front precondition
+/// rather than a mid-run failure. Read-only.
+#[orca_tool(domain = "jellyfin", verb = "lxc_preflight")]
+async fn jellyfin_lxc_preflight(
+    args: JellyfinLxcPreflightArgs,
+    _ctx: &ToolCtx,
+) -> Result<JellyfinLxcPreflightOutput> {
+    Ok(match pct_preflight(args.vmid).await {
+        Ok(detail) => JellyfinLxcPreflightOutput {
+            capable: true,
+            detail: if detail.is_empty() {
+                "pct reachable".to_string()
+            } else {
+                detail
+            },
+        },
+        Err(e) => JellyfinLxcPreflightOutput {
+            capable: false,
+            detail: e.to_string(),
+        },
     })
 }
 
@@ -471,6 +573,14 @@ mod tests {
         assert_eq!(Channel::Latest.image_tag(), "latest");
         assert_eq!(Channel::Rc.image_tag(), "unstable");
         assert_eq!(Channel::Stable.image_tag(), "stable");
+    }
+
+    #[tokio::test]
+    async fn preflight_fails_with_grant_hint_when_pct_unavailable() {
+        // No Proxmox host in CI/dev: `sudo -n pct` cannot succeed, so the probe
+        // must surface the actionable grant hint rather than a bare exit code.
+        let err = pct_preflight(None).await.unwrap_err().to_string();
+        assert!(err.contains("passwordless pct"), "{err}");
     }
 
     #[tokio::test]
