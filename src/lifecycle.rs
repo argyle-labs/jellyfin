@@ -120,6 +120,44 @@ async fn pct_preflight(vmid: Option<u32>) -> Result<String> {
     }
 }
 
+/// Probe the privileged in-container exec seam for `vmid` by running a no-op
+/// (`true`, an allowlisted command) inside it via [`plugin_toolkit::lxc_exec`].
+/// Success proves the daemon can drive `pct exec` through orca's scoped
+/// `admin lxc-exec` grant — the prerequisite for an LXC **update** (distinct from
+/// `install`, which provisions the CT via broad `pct` and uses [`pct_preflight`]).
+async fn lxc_exec_preflight(vmid: u32) -> Result<String> {
+    let res = plugin_toolkit::lxc_exec::lxc_exec(vmid, &["true"]).await?;
+    if res.success {
+        Ok(format!("lxc-exec seam reachable (vmid {vmid})"))
+    } else {
+        bail!(
+            "lxc-exec seam reachable but `true` in CT {vmid} did not succeed (exit {}): {} {}",
+            res.exit_code
+                .map_or_else(|| "signal".to_string(), |c| c.to_string()),
+            res.stderr,
+            res.error
+        )
+    }
+}
+
+/// Resolve the `docker` binary to an absolute path, falling back to the bare
+/// name (PATH lookup at spawn) when `which` can't find it. Mirrors the docker
+/// plugin so the update/install paths don't silently depend on the daemon's PATH.
+fn docker_bin() -> String {
+    plugin_toolkit::path::which("docker").unwrap_or_else(|| "docker".to_string())
+}
+
+/// The directory to run `docker compose` from — the compose file's own parent —
+/// so relative volume/env paths and the derived project name resolve against the
+/// deployment dir rather than the daemon's cwd. `None` when the path has no
+/// directory component (bare filename), leaving cwd unchanged.
+fn compose_dir(compose_file: &str) -> Option<std::path::PathBuf> {
+    Path::new(compose_file)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.to_path_buf())
+}
+
 /// Run a command, capturing output, and map a non-zero exit to an error that
 /// carries stderr — the lifecycle tools surface the runtime's own message
 /// rather than a bare exit code.
@@ -241,12 +279,15 @@ async fn jellyfin_install(
                 .bootstrap_path
                 .clone()
                 .unwrap_or_else(|| "compose.yml".to_string());
-            let cmd = Command::new("docker")
+            let mut cmd = Command::new(docker_bin())
                 .arg("compose")
                 .arg("-f")
                 .arg(&compose)
                 .arg("up")
                 .arg("-d");
+            if let Some(dir) = compose_dir(&compose) {
+                cmd = cmd.current_dir(dir);
+            }
             run(cmd).await?
         }
     };
@@ -319,39 +360,89 @@ pub struct JellyfinUpdateOutput {
 #[orca_tool(domain = "jellyfin", verb = "update")]
 async fn jellyfin_update(args: JellyfinUpdateArgs, _ctx: &ToolCtx) -> Result<JellyfinUpdateOutput> {
     let tag = args.channel.image_tag();
-    let output = match args.runtime {
-        Runtime::Docker => {
-            let image = format!("jellyfin/jellyfin:{tag}");
-            run(Command::new("docker").arg("pull").arg(&image)).await?;
-            run(Command::new("docker")
-                .arg("compose")
-                .arg("-f")
-                .arg(&args.compose_file)
-                .arg("up")
-                .arg("-d"))
-            .await?
-        }
+    let log = match args.runtime {
+        Runtime::Docker => update_docker(tag, &args.compose_file).await?,
         Runtime::Lxc => {
             let vmid = args.vmid.context("`vmid` is required when runtime=lxc")?;
-            // Fail fast with an actionable grant hint before the real exec.
-            pct_preflight(Some(vmid)).await?;
-            run(pct().arg("exec").arg(vmid.to_string()).arg("--").arg("bash").arg(
-                "-c",
-            ).arg(
-                // Upgrade the metapackage plus both split packages explicitly:
-                // `jellyfin` is a metapackage depending on `jellyfin-server` /
-                // `jellyfin-web`, and naming all three keeps the upgrade honest
-                // across the 10.x→ split-package layout.
-                "apt-get update && apt-get install -y --only-upgrade jellyfin jellyfin-server jellyfin-web && systemctl restart jellyfin",
-            ))
-            .await?
+            update_lxc(vmid).await?
         }
     };
     Ok(JellyfinUpdateOutput {
         updated: true,
         image_tag: tag.to_string(),
-        log: String::from_utf8_lossy(&output.stdout).into_owned(),
+        log,
     })
+}
+
+/// Docker update: pull the channel image, then `compose up -d` to recreate.
+/// Resolves the `docker` binary via PATH lookup (not a bare name that depends on
+/// the daemon's PATH) and runs `compose` **from the compose file's own
+/// directory** so its relative volume/env paths and derived project name resolve
+/// as they do on the deployment host — the bare relative default otherwise
+/// resolves against the daemon's cwd.
+async fn update_docker(tag: &str, compose_file: &str) -> Result<String> {
+    let docker = docker_bin();
+    let image = format!("jellyfin/jellyfin:{tag}");
+    let pull = run(Command::new(&docker).arg("pull").arg(&image)).await?;
+    let mut up = Command::new(&docker)
+        .arg("compose")
+        .arg("-f")
+        .arg(compose_file)
+        .arg("up")
+        .arg("-d");
+    if let Some(dir) = compose_dir(compose_file) {
+        up = up.current_dir(dir);
+    }
+    let up = run(up).await?;
+    Ok(format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&pull.stdout).trim(),
+        String::from_utf8_lossy(&up.stdout).trim()
+    )
+    .trim()
+    .to_string())
+}
+
+/// LXC update: run the package upgrade + service restart **inside** the
+/// container through orca's scoped `admin lxc-exec` seam
+/// ([`plugin_toolkit::lxc_exec`]) — allowlisted commands, no shell, no raw `pct`
+/// grant. Three explicit steps keep every `argv[0]` on the seam's allowlist; a
+/// single `bash -c "…"` would be refused by design. Both split packages are
+/// named alongside the `jellyfin` metapackage so the upgrade stays honest across
+/// the 10.x→ split-package layout.
+async fn update_lxc(vmid: u32) -> Result<String> {
+    let steps: [&[&str]; 3] = [
+        &["apt-get", "update"],
+        &[
+            "apt-get",
+            "install",
+            "-y",
+            "--only-upgrade",
+            "jellyfin",
+            "jellyfin-server",
+            "jellyfin-web",
+        ],
+        &["systemctl", "restart", "jellyfin"],
+    ];
+    let mut log = String::new();
+    for step in steps {
+        let res = plugin_toolkit::lxc_exec::lxc_exec(vmid, step).await?;
+        if !res.stdout.is_empty() {
+            log.push_str(&res.stdout);
+            log.push('\n');
+        }
+        if !res.success {
+            bail!(
+                "lxc-exec `{}` in CT {vmid} failed (exit {}): {} {}",
+                step.join(" "),
+                res.exit_code
+                    .map_or_else(|| "signal".to_string(), |c| c.to_string()),
+                res.stderr,
+                res.error
+            );
+        }
+    }
+    Ok(log.trim_end().to_string())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -367,8 +458,10 @@ async fn jellyfin_update(args: JellyfinUpdateArgs, _ctx: &ToolCtx) -> Result<Jel
 #[serde(crate = "plugin_toolkit::serde")]
 #[schemars(crate = "plugin_toolkit::schemars")]
 pub struct JellyfinLxcPreflightArgs {
-    /// LXC vmid to probe (`pct status <vmid>`). Omit to check general `pct`
-    /// access (`pct list`) without targeting a specific container.
+    /// LXC vmid to probe. With a vmid, checks the **update** path — the scoped
+    /// `admin lxc-exec` seam (runs `true` inside the CT). Omit to check general
+    /// `pct` access (`pct list`), the prerequisite for the **install/provision**
+    /// path which uses broad `pct`.
     #[arg(long)]
     #[serde(default)]
     pub vmid: Option<u32>,
@@ -384,28 +477,33 @@ pub struct JellyfinLxcPreflightArgs {
 #[serde(rename_all = "camelCase")]
 #[derive(Debug)]
 pub struct JellyfinLxcPreflightOutput {
-    /// True when the daemon can run privileged `pct` on this host — the
-    /// prerequisite for `jellyfin.install` / `jellyfin.update --runtime lxc`.
+    /// True when the probed capability is available on this host.
     pub capable: bool,
-    /// Probe stdout when capable; the remediation hint otherwise.
+    /// Probe detail when capable; the remediation hint otherwise.
     pub detail: String,
 }
 
-/// **Check the LXC update prerequisite.** Verifies the orca daemon can run
-/// privileged `pct` on this Proxmox host, the capability the LXC `install` /
-/// `update` paths depend on. Use it as a gate before an unattended LXC update
-/// (and in CI) so a missing sudo grant surfaces as a clear, up-front precondition
-/// rather than a mid-run failure. Read-only.
+/// **Check an LXC prerequisite.** With `--vmid`, verifies the **update** path:
+/// the scoped `admin lxc-exec` seam can exec inside that CT (no raw `pct` grant
+/// needed). Without a vmid, verifies general `pct` access — the **install**
+/// path's prerequisite. Use it as a gate before an unattended LXC op (and in CI)
+/// so a missing grant surfaces as a clear, up-front precondition rather than a
+/// mid-run failure. Read-only.
 #[orca_tool(domain = "jellyfin", verb = "lxc_preflight")]
 async fn jellyfin_lxc_preflight(
     args: JellyfinLxcPreflightArgs,
     _ctx: &ToolCtx,
 ) -> Result<JellyfinLxcPreflightOutput> {
-    Ok(match pct_preflight(args.vmid).await {
+    // vmid → probe the update seam; no vmid → probe general pct (install path).
+    let probe = match args.vmid {
+        Some(vmid) => lxc_exec_preflight(vmid).await,
+        None => pct_preflight(None).await,
+    };
+    Ok(match probe {
         Ok(detail) => JellyfinLxcPreflightOutput {
             capable: true,
             detail: if detail.is_empty() {
-                "pct reachable".to_string()
+                "reachable".to_string()
             } else {
                 detail
             },
