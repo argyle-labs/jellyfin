@@ -123,33 +123,34 @@ orca jellyfin transcode_health --endpoint media   # is hardware transcode actual
 
 ### Updating an LXC deployment
 
-`jellyfin.update --runtime lxc --vmid <id>` runs the in-CT package upgrade via
-`pct`. Because the orca daemon runs as a **non-root service user** on Proxmox
-hosts, the plugin escalates through `sudo -n pct` — so the host must grant that
-user passwordless `pct`. Once, on the Proxmox host:
+`jellyfin.update --runtime lxc --vmid <id>` runs the in-CT package upgrade
+(`apt-get --only-upgrade jellyfin …` + `systemctl restart`). Because the orca
+daemon runs as a **non-root service user** on Proxmox hosts, it can't run `pct`
+directly — so **update routes through orca's scoped `admin lxc-exec` seam**: each
+step is an allowlisted command (no shell), run as root via `sudo -n orca admin
+lxc-exec` with the payload on stdin. No raw `pct` sudoers rule is needed, and the
+grant is **converged by orca** (`system create --service-user <u>` installs a
+single `admin lxc-exec` line on Proxmox hosts) — not a manual per-host file.
+
+**Gate it first.** Check the prerequisite explicitly (e.g. in CI, before an
+unattended update) — with a vmid this probes the update seam end to end:
 
 ```sh
-# replace `orca` with the daemon's service user if different
-echo 'orca ALL=(root) NOPASSWD: /usr/sbin/pct' > /etc/sudoers.d/orca-pct
-chmod 440 /etc/sudoers.d/orca-pct
-visudo -c    # validate
+orca jellyfin lxc_preflight --vmid 113   # {"capable": true, "detail": "lxc-exec seam reachable (vmid 113)"}
 ```
 
-Without this, the update fails fast with `sudo: a password is required` /
-`ipcc_send_rec ... Unable to load access control list` rather than hanging.
+If the grant is missing, `update` fails fast with a pointer to converge it rather
+than the opaque `ipcc_send_rec ... Unable to load access control list`.
 
-**Gate it first.** `jellyfin.update`/`jellyfin.install` run a `pct` preflight and
-abort with the remediation above if the grant is missing — and you can check the
-prerequisite explicitly (e.g. in CI, before an unattended update):
-
-```sh
-orca jellyfin lxc_preflight --vmid 113   # {"capable": true, "detail": "status: running"}
-```
-
-> A managed, converged grant (so this isn't a manual per-host step) is tracked as
-> the orca `admin lxc-exec` design issue — once landed, orca provisions the grant
-> fleet-wide and the plugin routes `pct` through the scoped admin seam instead of
-> a direct sudo rule.
+> **Provisioning (`jellyfin.install --runtime lxc`) is different.** Creating a
+> container uses broad `pct` (create/set/start via `provision.sh`), which the
+> scoped exec seam intentionally does **not** cover. On a host where you drive
+> provisioning through orca, grant the service user `pct` directly:
+> ```sh
+> echo 'orca ALL=(root) NOPASSWD: /usr/sbin/pct' > /etc/sudoers.d/orca-pct
+> chmod 440 /etc/sudoers.d/orca-pct && visudo -c
+> ```
+> `orca jellyfin lxc_preflight` (no vmid) checks this general `pct` access.
 
 ## Layout
 
