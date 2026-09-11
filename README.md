@@ -115,6 +115,7 @@ surface**, identical across **CLI, MCP, and REST** (generated from one
 | `jellyfin.libraries` | configured libraries + paths |
 | `jellyfin.transcode_health` | classify active sessions; flag **software fallback** (HW accel not engaging) |
 | `jellyfin.memory_guard` | guard against runaway memory use |
+| `jellyfin.lxc_preflight` | check the LXC update prerequisite (daemon can drive privileged `pct`) |
 
 ```sh
 orca jellyfin transcode_health --endpoint media   # is hardware transcode actually engaging?
@@ -136,6 +137,19 @@ visudo -c    # validate
 
 Without this, the update fails fast with `sudo: a password is required` /
 `ipcc_send_rec ... Unable to load access control list` rather than hanging.
+
+**Gate it first.** `jellyfin.update`/`jellyfin.install` run a `pct` preflight and
+abort with the remediation above if the grant is missing — and you can check the
+prerequisite explicitly (e.g. in CI, before an unattended update):
+
+```sh
+orca jellyfin lxc_preflight --vmid 113   # {"capable": true, "detail": "status: running"}
+```
+
+> A managed, converged grant (so this isn't a manual per-host step) is tracked as
+> the orca `admin lxc-exec` design issue — once landed, orca provisions the grant
+> fleet-wide and the plugin routes `pct` through the scoped admin seam instead of
+> a direct sudo rule.
 
 ## Layout
 
