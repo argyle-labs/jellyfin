@@ -10,5 +10,5 @@ concurrency:
 
 jobs:
   ci:
-    uses: argyle-labs/.github/.github/workflows/plugin-ci.yml@main
+    uses: argyle-labs/.github/.github/workflows/plugin-ci.yml@feat/plugin-ci-container
     secrets: inherit
