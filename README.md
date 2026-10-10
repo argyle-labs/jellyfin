@@ -25,7 +25,7 @@ can run Jellyfin **without orca** on docker, podman, an LXC, a VM, or Unraid.
 
 ### Docker / Podman
 
-The image (`ghcr.io/argyle-labs/jellyfin`, built from [`Dockerfile`](Dockerfile)
+The image (`gitea.scottkey.me/argyle-labs/jellyfin`, built from [`Dockerfile`](Dockerfile)
 on `debian:12-slim`) runs `network_mode: host` on **:8096**
 (`http://<host>:8096`).
 
@@ -44,13 +44,13 @@ mix and match (all shown inline as comments), not separate setups:
 - **Transcode scratch** — a disk path under `/cache` (default) **or** `tmpfs`
   (RAM), independent of the GPU choice.
 
-**Not tied to our image.** `ghcr.io/argyle-labs/jellyfin` is a convenience build —
+**Not tied to our image.** `gitea.scottkey.me/argyle-labs/jellyfin` is a convenience build —
 swap `image:` for any equivalent. [`examples/docker-compose.upstream.yml`](examples/docker-compose.upstream.yml)
 is the same deployment on the official image:
 
 | Image | Notes |
 |---|---|
-| `ghcr.io/argyle-labs/jellyfin` | this repo's slim build (`Dockerfile`); Intel VAAPI ready |
+| `gitea.scottkey.me/argyle-labs/jellyfin` | this repo's slim build (`Dockerfile`); Intel VAAPI ready |
 | `jellyfin/jellyfin` | official upstream image ([`examples/docker-compose.upstream.yml`](examples/docker-compose.upstream.yml)) |
 | `lscr.io/linuxserver/jellyfin` | LinuxServer.io build (uses `PUID`/`PGID`, `/config` layout) |
 
@@ -81,7 +81,7 @@ Install from **Community Applications** (the *Apps* tab) — search **Jellyfin**
 and add the template; it wires up the web UI, `/config`, and media shares for you.
 Add `/dev/dri` (Settings → Docker, or the template's extra device) for Intel/AMD
 hardware transcoding. To use this repo's image instead, set the template's
-*Repository* to `ghcr.io/argyle-labs/jellyfin`. (Manual fallback: *Docker → Add
+*Repository* to `gitea.scottkey.me/argyle-labs/jellyfin`. (Manual fallback: *Docker → Add
 Container* with that image, port `8096`, `/config` + `/cache`, media read-only.)
 
 ### Dependencies

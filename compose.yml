@@ -1,6 +1,6 @@
 services:
   jellyfin:
-    image: ghcr.io/argyle-labs/jellyfin:latest
+    image: gitea.scottkey.me/argyle-labs/jellyfin:latest
     container_name: jellyfin
     network_mode: host
     restart: unless-stopped

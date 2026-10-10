@@ -1,4 +1,4 @@
-# Jellyfin — this repo's self-built image (ghcr.io/argyle-labs/jellyfin).
+# Jellyfin — this repo's self-built image (gitea.scottkey.me/argyle-labs/jellyfin).
 #
 # ONE implementation. GPU and transcode-scratch are independent OPTIONS you mix
 # and match — not separate setups:
@@ -12,7 +12,7 @@
 
 services:
   jellyfin:
-    image: ghcr.io/argyle-labs/jellyfin:latest
+    image: gitea.scottkey.me/argyle-labs/jellyfin:latest
     container_name: jellyfin
     network_mode: host          # Jellyfin serves on :8096 (http://<host>:8096)
     restart: unless-stopped
