@@ -549,6 +549,8 @@ pub struct JellyfinBackupArgs {
 pub struct JellyfinBackupOutput {
     /// Absolute path of the archive written.
     pub archive: String,
+    /// Hex SHA-256 of the archive, also written to its `.sha256` sidecar.
+    pub sha256: String,
 }
 
 /// **Back up the Jellyfin `/config` volume** to a `.tar.gz` in the destination
@@ -585,7 +587,8 @@ async fn backup_config(args: &JellyfinBackupArgs) -> Result<JellyfinBackupOutput
         .arg("."))
     .await?;
 
-    Ok(JellyfinBackupOutput { archive })
+    let sha256 = crate::archive::write_sidecar(&archive)?;
+    Ok(JellyfinBackupOutput { archive, sha256 })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -622,12 +625,14 @@ pub struct JellyfinRestoreArgs {
 pub struct JellyfinRestoreOutput {
     /// True when extraction completed.
     pub restored: bool,
+    /// Hex SHA-256 the archive was verified against.
+    pub verified_sha256: String,
     /// Where the config was restored to.
     pub config_path: String,
 }
 
 /// **Restore the Jellyfin `/config` volume** from a `.tar.gz` produced by
-/// `jellyfin.backup`. The service should be stopped before restoring; this
+/// `jellyfin.backup`, after verifying it against its `.sha256` sidecar. The service should be stopped before restoring; this
 /// tool only extracts the archive over the config directory.
 #[orca_tool(domain = "jellyfin", verb = "restore")]
 async fn jellyfin_restore(
@@ -642,15 +647,11 @@ async fn restore_config(args: JellyfinRestoreArgs) -> Result<JellyfinRestoreOutp
     if !Path::new(&args.from).is_file() {
         bail!("backup tarball '{}' not found", args.from);
     }
-    run(Command::new("mkdir").arg("-p").arg(&args.config_path)).await?;
-    run(Command::new("tar")
-        .arg("-xzf")
-        .arg(&args.from)
-        .arg("-C")
-        .arg(&args.config_path))
-    .await?;
+    let verified = crate::archive::verify(&args.from)?;
+    crate::archive::extract(&verified, &args.config_path).await?;
     Ok(JellyfinRestoreOutput {
         restored: true,
+        verified_sha256: verified.sha256.clone(),
         config_path: args.config_path,
     })
 }

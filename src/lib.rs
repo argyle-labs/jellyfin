@@ -27,6 +27,7 @@
 // session/transcode payloads are also modeled opaquely where untyped.
 #![allow(clippy::disallowed_types)]
 
+pub mod archive;
 pub mod diag;
 pub mod lifecycle;
 pub mod storage;
