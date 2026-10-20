@@ -357,7 +357,7 @@ pub struct JellyfinUpdateOutput {
 /// (`jellyfin.memory_guard --action recover`) is the separate self-heal path
 /// for transcode-memory pressure and is intentionally kept distinct from this
 /// version bump.
-#[orca_tool(domain = "jellyfin", verb = "update")]
+#[orca_tool(domain = "jellyfin", verb = "update", reaches = ["lxc.exec"])]
 async fn jellyfin_update(args: JellyfinUpdateArgs, _ctx: &ToolCtx) -> Result<JellyfinUpdateOutput> {
     let tag = args.channel.image_tag();
     let log = match args.runtime {
@@ -489,7 +489,7 @@ pub struct JellyfinLxcPreflightOutput {
 /// path's prerequisite. Use it as a gate before an unattended LXC op (and in CI)
 /// so a missing grant surfaces as a clear, up-front precondition rather than a
 /// mid-run failure. Read-only.
-#[orca_tool(domain = "jellyfin", verb = "lxc_preflight")]
+#[orca_tool(domain = "jellyfin", verb = "lxc_preflight", reaches = ["lxc.exec"])]
 async fn jellyfin_lxc_preflight(
     args: JellyfinLxcPreflightArgs,
     _ctx: &ToolCtx,
