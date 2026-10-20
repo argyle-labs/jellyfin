@@ -2,11 +2,9 @@
 //!
 //! Net-new over the diagnosis surface: these `#[orca_tool]`s own the full
 //! deploy lifecycle of a Jellyfin instance — provision, version bump, and
-//! config backup/restore — driving the host's container runtime
-//! (`docker` for Compose; LXC requires an in-guest orca member) and `tar` for the `/config`
-//! volume through `plugin_toolkit::process::Command`. There is no parallel shell glue:
-//! the bootstrap scripts in `scripts/` + `lxc/` are the curl-bootstrap payload
-//! these tools orchestrate, and every capability is reachable as an orca tool.
+//! config backup/restore — driving `docker compose` and `tar` for the
+//! `/config` volume through `plugin_toolkit::process::Command`. LXC runtimes
+//! return unsupported: they need an in-guest orca member.
 //!
 //! Imports flow through `plugin_toolkit::prelude::*` only — the toolkit is the
 //! single gateway. Process exec uses the toolkit's orca-owned `process` module.
@@ -34,9 +32,9 @@ use plugin_toolkit::process::{Command, Output};
 #[serde(rename_all = "lowercase")]
 pub enum Runtime {
     /// Proxmox LXC; lifecycle ops require an in-guest orca member.
-    #[default]
     Lxc,
     /// Docker / Compose, driven via `docker`.
+    #[default]
     Docker,
 }
 
@@ -75,8 +73,8 @@ impl Channel {
     }
 }
 
-pub(crate) const LXC_UNSUPPORTED: &str =
-    "unsupported: runtime=lxc needs an in-guest orca member; the jellyfin plugin does not run privileged host commands";
+pub(crate) const LXC_UNSUPPORTED: &str = "unsupported: runtime=lxc needs an in-guest orca member; \
+     the jellyfin plugin does not run privileged host commands";
 
 /// Resolve the `docker` binary to an absolute path, falling back to the bare
 /// name (PATH lookup at spawn) when `which` can't find it. Mirrors the docker
@@ -132,27 +130,10 @@ async fn run(cmd: Command) -> Result<Output> {
 #[schemars(crate = "plugin_toolkit::schemars")]
 pub struct JellyfinInstallArgs {
     /// Where to deploy: `lxc` (Proxmox) or `docker` (Compose).
-    #[arg(long, value_enum, default_value_t = Runtime::Lxc)]
+    #[arg(long, value_enum, default_value_t = Runtime::Docker)]
     #[serde(default)]
     pub runtime: Runtime,
-    /// LXC vmid (LXC runtime only).
-    #[arg(long)]
-    #[serde(default)]
-    pub vmid: Option<u32>,
-    /// Host path for the persistent `/config` volume.
-    #[arg(long, default_value = "/opt/jellyfin/config")]
-    #[serde(default = "default_config_path")]
-    pub config_path: String,
-    /// Host path to the media library, mounted read-only.
-    #[arg(long)]
-    #[serde(default)]
-    pub media_path: Option<String>,
-    /// Skip GPU passthrough (software-transcode-only minimal deploy).
-    #[arg(long)]
-    #[serde(default)]
-    pub no_gpu: bool,
-    /// Path to the bootstrap `provision.sh` (LXC) or `compose.yml` (Docker).
-    /// Defaults to the repo-relative asset; override for a non-standard layout.
+    /// Path to the `compose.yml`. Defaults to the repo-relative asset.
     #[arg(long)]
     #[serde(default)]
     pub bootstrap_path: Option<String>,
@@ -180,9 +161,8 @@ pub struct JellyfinInstallOutput {
     pub log: String,
 }
 
-/// **Provision a Jellyfin deployment.** On `docker`, brings up the Compose stack. GPU passthrough is wired by default;
-/// pass `no_gpu` for a software-only minimal install. On `lxc`, returns
-/// unsupported: it needs an in-guest orca member.
+/// **Provision a Jellyfin deployment.** On `docker`, brings up the Compose
+/// stack. On `lxc`, returns unsupported: it needs an in-guest orca member.
 #[orca_tool(domain = "jellyfin", verb = "install")]
 async fn jellyfin_install(
     args: JellyfinInstallArgs,
@@ -232,17 +212,13 @@ async fn install(args: JellyfinInstallArgs) -> Result<JellyfinInstallOutput> {
 #[schemars(crate = "plugin_toolkit::schemars")]
 pub struct JellyfinUpdateArgs {
     /// Where the instance runs: `lxc` or `docker`.
-    #[arg(long, value_enum, default_value_t = Runtime::Lxc)]
+    #[arg(long, value_enum, default_value_t = Runtime::Docker)]
     #[serde(default)]
     pub runtime: Runtime,
     /// Release channel to move to. `latest` / `rc` / `stable`.
     #[arg(long, value_enum, default_value_t = Channel::Latest)]
     #[serde(default)]
     pub channel: Channel,
-    /// LXC vmid (LXC runtime only).
-    #[arg(long)]
-    #[serde(default)]
-    pub vmid: Option<u32>,
     /// Compose file (Docker runtime only).
     #[arg(long, default_value = "compose.yml")]
     #[serde(default = "default_compose")]
@@ -273,12 +249,15 @@ pub struct JellyfinUpdateOutput {
 
 /// **Update a Jellyfin deployment** to the head of a release channel. On
 /// `docker`, re-pulls the channel image tag and recreates the container. On
-/// `lxc`, returns unsupported: it needs an in-guest orca member. The memory-guard restart capability
-/// (`jellyfin.memory_guard --action recover`) is the separate self-heal path
-/// for transcode-memory pressure and is intentionally kept distinct from this
-/// version bump.
+/// `lxc`, returns unsupported: it needs an in-guest orca member. The
+/// memory-guard restart (`jellyfin.memory_guard --action recover`) is the
+/// separate self-heal path for transcode-memory pressure.
 #[orca_tool(domain = "jellyfin", verb = "update")]
 async fn jellyfin_update(args: JellyfinUpdateArgs, _ctx: &ToolCtx) -> Result<JellyfinUpdateOutput> {
+    update(args).await
+}
+
+async fn update(args: JellyfinUpdateArgs) -> Result<JellyfinUpdateOutput> {
     let tag = args.channel.image_tag();
     let log = match args.runtime {
         Runtime::Docker => update_docker(tag, &args.compose_file).await?,
@@ -482,13 +461,20 @@ mod tests {
     async fn lxc_install_is_unsupported() {
         let args = JellyfinInstallArgs {
             runtime: Runtime::Lxc,
-            vmid: Some(100),
-            config_path: default_config_path(),
-            media_path: None,
-            no_gpu: false,
             bootstrap_path: None,
         };
         let err = install(args).await.unwrap_err().to_string();
+        assert!(err.starts_with("unsupported"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn lxc_update_is_unsupported() {
+        let args = JellyfinUpdateArgs {
+            runtime: Runtime::Lxc,
+            channel: Channel::Latest,
+            compose_file: default_compose(),
+        };
+        let err = update(args).await.unwrap_err().to_string();
         assert!(err.starts_with("unsupported"), "{err}");
     }
 

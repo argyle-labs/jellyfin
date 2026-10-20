@@ -229,10 +229,10 @@ async fn check(runtime: Runtime, id: &str, config_root: &str) -> Result<StorageR
 #[serde(crate = "plugin_toolkit::serde")]
 pub struct JellyfinStorageCheckArgs {
     /// Where the instance runs: `lxc` or `docker`.
-    #[arg(long, value_enum, default_value_t = Runtime::Lxc)]
+    #[arg(long, value_enum, default_value_t = Runtime::Docker)]
     #[serde(default)]
     pub runtime: Runtime,
-    /// LXC vmid or docker container name/id.
+    /// Docker container name/id.
     #[arg(long)]
     pub target: String,
     /// Override the server data root holding the `.mblink` maps.
@@ -264,10 +264,10 @@ async fn jellyfin_storage_check(
 #[serde(crate = "plugin_toolkit::serde")]
 pub struct JellyfinStorageRepairArgs {
     /// Where the instance runs: `lxc` or `docker`.
-    #[arg(long, value_enum, default_value_t = Runtime::Lxc)]
+    #[arg(long, value_enum, default_value_t = Runtime::Docker)]
     #[serde(default)]
     pub runtime: Runtime,
-    /// LXC vmid or docker container name/id.
+    /// Docker container name/id.
     #[arg(long)]
     pub target: String,
     /// Registered Jellyfin endpoint name, used to trigger the rescan.
