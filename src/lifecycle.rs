@@ -117,7 +117,7 @@ async fn run(cmd: Command) -> Result<Output> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// jellyfin.install — provision an LXC or Compose deployment
+// jellyfin.install — provision a Compose deployment (LXC unsupported)
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[derive(
