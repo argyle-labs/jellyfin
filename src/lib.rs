@@ -29,6 +29,7 @@
 
 pub mod diag;
 pub mod lifecycle;
+pub mod service;
 pub mod storage;
 pub mod tools;
 

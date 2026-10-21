@@ -15,5 +15,6 @@ fn main() -> plugin_toolkit::anyhow::Result<()> {
     Plugin::named("jellyfin")
         .version(env!("CARGO_PKG_VERSION"))
         .tools(["jellyfin."])
+        .service(jellyfin::service::JellyfinBackend)
         .serve()
 }
