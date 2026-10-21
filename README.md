@@ -109,7 +109,7 @@ surface**, identical across **CLI, MCP, and REST** (generated from one
 
 | Tool | What it does |
 |---|---|
-| `jellyfin.install` / `jellyfin.update` | provision / upgrade the server |
+| `jellyfin.install` / `jellyfin.update` | return the `service.create action=deploy` call that places Jellyfin on a deploy target |
 | `jellyfin.backup` / `jellyfin.restore` | config backup + restore |
 | `jellyfin.server_info` | server name / version / OS |
 | `jellyfin.libraries` | configured libraries + paths |
@@ -120,14 +120,27 @@ surface**, identical across **CLI, MCP, and REST** (generated from one
 orca jellyfin transcode_health --endpoint media   # is hardware transcode actually engaging?
 ```
 
-### LXC deployments
+### Deploying through orca
 
-The plugin runs no privileged host commands (no `sudo`, no `pct`).
-`install`, `update`, `storage_check`, and `storage_repair` with `--runtime lxc`
-return `unsupported: runtime=lxc needs an in-guest orca member`. Provision an
-LXC by hand with `lxc/provision.sh` (see `docs/deploy-lxc.md`). In-app
-operations (`server_info`, `libraries`, `transcode_health`, `memory_guard`,
-library refresh) use the Jellyfin HTTP API and work for any runtime.
+jellyfin registers a `service` backend. Its workload is `gitea.scottkey.me/argyle-labs/jellyfin:latest`
+on port 8096 with `/opt/<instance>/config` → `/config`, `/opt/<instance>/cache` →
+`/cache`, and `/mnt/media` mounted read-only. orca core places it on any deploy
+target (Docker or Podman; pick one from `orca deploy list`):
+
+```sh
+orca service create --action deploy --service jellyfin --instance jellyfin \
+  --runtime docker --target-id <uuid> --route lan_v4:http://10.0.0.5:8096
+```
+
+The plugin runs no host commands to deploy (no `docker`, `sudo`, or `pct`).
+`jellyfin.install` / `jellyfin.update` return that `service.create` call rather
+than executing it. LXC/VM runtimes return unsupported until the deploy spec can
+describe a non-OCI workload; provision an LXC by hand with `lxc/provision.sh`
+(see `docs/deploy-lxc.md`). GPU passthrough is not yet expressible in the
+deploy spec — add `/dev/dri` on the target by hand. `storage_check` /
+`storage_repair` with `--runtime lxc` return unsupported. In-app operations
+(`server_info`, `libraries`, `transcode_health`, `memory_guard`, library
+refresh) use the Jellyfin HTTP API and work for any runtime.
 
 ## Layout
 

@@ -32,7 +32,30 @@
 use plugin_toolkit::prelude::*;
 use plugin_toolkit::process::Command;
 
-use crate::lifecycle::Runtime;
+/// Where a Jellyfin instance runs — selects how the storage tools reach it.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    plugin_toolkit::serde::Serialize,
+    plugin_toolkit::serde::Deserialize,
+    plugin_toolkit::schemars::JsonSchema,
+    plugin_toolkit::clap::ValueEnum,
+    Default,
+)]
+#[serde(crate = "plugin_toolkit::serde")]
+#[schemars(crate = "plugin_toolkit::schemars")]
+#[serde(rename_all = "lowercase")]
+pub enum Runtime {
+    /// Proxmox LXC; lifecycle ops require an in-guest orca member.
+    Lxc,
+    /// Docker / Compose, driven via `docker`.
+    #[default]
+    Docker,
+}
+
+const LXC_UNSUPPORTED: &str = "unsupported: runtime=lxc needs an in-guest orca member; \
+     the jellyfin plugin does not run privileged host commands";
 
 /// Default server data root holding the `*.mblink` library maps.
 const DEFAULT_CONFIG_ROOT: &str = "/var/lib/jellyfin/root/default";
@@ -185,7 +208,7 @@ fn lines(out: &str) -> Vec<String> {
 /// Gather the `.mblink` roots + live mounts + unresolved roots, then classify.
 async fn check(runtime: Runtime, id: &str, config_root: &str) -> Result<StorageReport> {
     if matches!(runtime, Runtime::Lxc) {
-        bail!(crate::lifecycle::LXC_UNSUPPORTED);
+        bail!(LXC_UNSUPPORTED);
     }
     // Each `.mblink` file's contents is a real library path. `-exec sh -c` with
     // a trailing `echo` guarantees a newline between concatenated files.
