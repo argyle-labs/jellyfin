@@ -7,7 +7,7 @@ use plugin_toolkit::service::{
 };
 
 pub const PROVIDER: &str = "jellyfin";
-pub const IMAGE: &str = "jellyfin/jellyfin:latest";
+pub const IMAGE: &str = "gitea.scottkey.me/argyle-labs/jellyfin:latest";
 pub const PORT: u16 = 8096;
 pub const MEDIA_ROOT: &str = "/mnt/media";
 
@@ -209,7 +209,10 @@ mod tests {
         let routes: Routes = vec![Route::new("lan_v4", "http", "10.0.0.5", Some(18096))].into();
         let spec = workload(Runtime::Docker, "jellyfin", &routes).unwrap();
         assert_eq!(spec.name, "jellyfin");
-        assert_eq!(spec.image.as_deref(), Some(IMAGE));
+        assert_eq!(
+            spec.image.as_deref(),
+            Some("gitea.scottkey.me/argyle-labs/jellyfin:latest")
+        );
         assert_eq!(spec.ports, vec!["18096:8096".to_string()]);
         let m: Vec<_> = spec
             .mounts

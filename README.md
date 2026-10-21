@@ -122,7 +122,7 @@ orca jellyfin transcode_health --endpoint media   # is hardware transcode actual
 
 ### Deploying through orca
 
-jellyfin registers a `service` backend. Its workload is `jellyfin/jellyfin:latest`
+jellyfin registers a `service` backend. Its workload is `gitea.scottkey.me/argyle-labs/jellyfin:latest`
 on port 8096 with `/opt/<instance>/config` → `/config`, `/opt/<instance>/cache` →
 `/cache`, and `/mnt/media` mounted read-only. orca core places it on any deploy
 target (Docker or Podman; pick one from `orca deploy list`):
