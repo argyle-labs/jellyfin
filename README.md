@@ -115,42 +115,19 @@ surface**, identical across **CLI, MCP, and REST** (generated from one
 | `jellyfin.libraries` | configured libraries + paths |
 | `jellyfin.transcode_health` | classify active sessions; flag **software fallback** (HW accel not engaging) |
 | `jellyfin.memory_guard` | guard against runaway memory use |
-| `jellyfin.lxc_preflight` | check the LXC update prerequisite (daemon can drive privileged `pct`) |
 
 ```sh
 orca jellyfin transcode_health --endpoint media   # is hardware transcode actually engaging?
 ```
 
-### Updating an LXC deployment
+### LXC deployments
 
-`jellyfin.update --runtime lxc --vmid <id>` runs the in-CT package upgrade
-(`apt-get --only-upgrade jellyfin …` + `systemctl restart`). Because the orca
-daemon runs as a **non-root service user** on Proxmox hosts, it can't run `pct`
-directly — so **update routes through orca's scoped `admin lxc-exec` seam**: each
-step is an allowlisted command (no shell), run as root via `sudo -n orca admin
-lxc-exec` with the payload on stdin. No raw `pct` sudoers rule is needed, and the
-grant is **converged by orca** (`system create --service-user <u>` installs a
-single `admin lxc-exec` line on Proxmox hosts) — not a manual per-host file.
-
-**Gate it first.** Check the prerequisite explicitly (e.g. in CI, before an
-unattended update) — with a vmid this probes the update seam end to end:
-
-```sh
-orca jellyfin lxc_preflight --vmid 113   # {"capable": true, "detail": "lxc-exec seam reachable (vmid 113)"}
-```
-
-If the grant is missing, `update` fails fast with a pointer to converge it rather
-than the opaque `ipcc_send_rec ... Unable to load access control list`.
-
-> **Provisioning (`jellyfin.install --runtime lxc`) is different.** Creating a
-> container uses broad `pct` (create/set/start via `provision.sh`), which the
-> scoped exec seam intentionally does **not** cover. On a host where you drive
-> provisioning through orca, grant the service user `pct` directly:
-> ```sh
-> echo 'orca ALL=(root) NOPASSWD: /usr/sbin/pct' > /etc/sudoers.d/orca-pct
-> chmod 440 /etc/sudoers.d/orca-pct && visudo -c
-> ```
-> `orca jellyfin lxc_preflight` (no vmid) checks this general `pct` access.
+The plugin runs no privileged host commands (no `sudo`, no `pct`).
+`install`, `update`, `storage_check`, and `storage_repair` with `--runtime lxc`
+return `unsupported: runtime=lxc needs an in-guest orca member`. Provision an
+LXC by hand with `lxc/provision.sh` (see `docs/deploy-lxc.md`). In-app
+operations (`server_info`, `libraries`, `transcode_health`, `memory_guard`,
+library refresh) use the Jellyfin HTTP API and work for any runtime.
 
 ## Layout
 

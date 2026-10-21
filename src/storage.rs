@@ -25,9 +25,8 @@
 //!     When the roots are healthy, `apply` triggers `POST /Library/Refresh` so
 //!     Jellyfin re-derives item paths and repopulates artwork.
 //!
-//! The classifier ([`classify`]) is pure and unit-tested; the exec wrappers
-//! drive `pct exec` / `docker exec` and hold no logic worth a container to
-//! test.
+//! The classifier ([`classify`]) is pure and unit-tested; the exec wrapper
+//! drives `docker exec`. LXC targets need an in-guest orca member.
 #![allow(clippy::disallowed_types)]
 
 use plugin_toolkit::prelude::*;
@@ -150,12 +149,8 @@ pub fn classify(
 // Exec layer
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Base `pct exec <id> --` / `docker exec <id>` command.
-fn guest(runtime: Runtime, id: &str) -> Command {
-    match runtime {
-        Runtime::Lxc => Command::new("pct").arg("exec").arg(id).arg("--"),
-        Runtime::Docker => Command::new("docker").arg("exec").arg(id),
-    }
+fn guest(id: &str) -> Command {
+    Command::new("docker").arg("exec").arg(id)
 }
 
 /// Run a guest command, returning stdout; a non-zero exit carries stderr.
@@ -189,9 +184,12 @@ fn lines(out: &str) -> Vec<String> {
 
 /// Gather the `.mblink` roots + live mounts + unresolved roots, then classify.
 async fn check(runtime: Runtime, id: &str, config_root: &str) -> Result<StorageReport> {
+    if matches!(runtime, Runtime::Lxc) {
+        bail!(crate::lifecycle::LXC_UNSUPPORTED);
+    }
     // Each `.mblink` file's contents is a real library path. `-exec sh -c` with
     // a trailing `echo` guarantees a newline between concatenated files.
-    let find = guest(runtime, id)
+    let find = guest(id)
         .arg("find")
         .arg(config_root)
         .arg("-name")
@@ -207,13 +205,13 @@ async fn check(runtime: Runtime, id: &str, config_root: &str) -> Result<StorageR
         .arg(";");
     let roots = lines(&capture(find).await.context("read .mblink roots")?);
 
-    let mount_cmd = guest(runtime, id).arg("findmnt").arg("-rno").arg("TARGET");
+    let mount_cmd = guest(id).arg("findmnt").arg("-rno").arg("TARGET");
     let mount_targets = lines(&capture(mount_cmd).await.unwrap_or_default());
 
     // Probe each root's existence individually (paths may contain spaces).
     let mut unresolved = Vec::new();
     for root in &roots {
-        let test = guest(runtime, id).arg("test").arg("-d").arg(root);
+        let test = guest(id).arg("test").arg("-d").arg(root);
         if capture(test).await.is_err() {
             unresolved.push(root.clone());
         }
@@ -231,10 +229,10 @@ async fn check(runtime: Runtime, id: &str, config_root: &str) -> Result<StorageR
 #[serde(crate = "plugin_toolkit::serde")]
 pub struct JellyfinStorageCheckArgs {
     /// Where the instance runs: `lxc` or `docker`.
-    #[arg(long, value_enum, default_value_t = Runtime::Lxc)]
+    #[arg(long, value_enum, default_value_t = Runtime::Docker)]
     #[serde(default)]
     pub runtime: Runtime,
-    /// LXC vmid or docker container name/id.
+    /// Docker container name/id.
     #[arg(long)]
     pub target: String,
     /// Override the server data root holding the `.mblink` maps.
@@ -266,10 +264,10 @@ async fn jellyfin_storage_check(
 #[serde(crate = "plugin_toolkit::serde")]
 pub struct JellyfinStorageRepairArgs {
     /// Where the instance runs: `lxc` or `docker`.
-    #[arg(long, value_enum, default_value_t = Runtime::Lxc)]
+    #[arg(long, value_enum, default_value_t = Runtime::Docker)]
     #[serde(default)]
     pub runtime: Runtime,
-    /// LXC vmid or docker container name/id.
+    /// Docker container name/id.
     #[arg(long)]
     pub target: String,
     /// Registered Jellyfin endpoint name, used to trigger the rescan.
@@ -401,6 +399,15 @@ mod tests {
         );
         assert_eq!(report.issues.len(), 1);
         assert_eq!(report.issues[0].kind, "mount_missing");
+    }
+
+    #[tokio::test]
+    async fn lxc_check_is_unsupported() {
+        let err = check(Runtime::Lxc, "100", DEFAULT_CONFIG_ROOT)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.starts_with("unsupported"), "{err}");
     }
 
     #[test]
