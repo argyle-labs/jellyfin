@@ -39,7 +39,7 @@ path = "src/main.rs"
 # ::plugin_toolkit::* and anchors the generated serde derives). The plugin
 # source names no external crate.
 #
-plugin-toolkit = { version = "=0.2.1-rc.39", registry = "gitea", package = "orca-plugin-toolkit", default-features = false, features = ["tools", "db", "http", "openapi", "notify"] }
+plugin-toolkit = { version = ">=0.2.1-rc.47", registry = "gitea", package = "orca-plugin-toolkit", default-features = false, features = ["tools", "db", "http", "openapi", "notify"] }
 
 [dev-dependencies]
 # Dev-only: the integration-test crate (a separate crate from the lib) reaches
@@ -50,7 +50,7 @@ wiremock = "0.6"
 tempfile = "3"
 
 [build-dependencies]
-plugin-toolkit-build = { version = "=0.2.1-rc.39", registry = "gitea", package = "orca-plugin-toolkit-build" }
+plugin-toolkit-build = { version = ">=0.2.1-rc.47", registry = "gitea", package = "orca-plugin-toolkit-build" }
 
 # Match orca's workspace lint floor: discarding a Result/Option via
 # `let _ = ...` was a load-bearing past incident, so keep it a hard error here
