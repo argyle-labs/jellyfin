@@ -54,10 +54,9 @@ pub(crate) fn make_client(name: &str) -> Result<Client> {
     // `endpoint_db::get` never populates `#[secret]` fields (so list/detail
     // can't leak the token) — read the real value from the secrets store
     // under the same `scoped_name` key create/update wrote it to.
-    let key = secrets::scoped_name("jellyfin", name, "token")?;
-    let token = secrets::get(key.as_str())?
-        .map(|s| s.expose_secret().clone())
-        .with_context(|| format!("jellyfin endpoint '{name}' has no stored token"))?;
+    let token = secrets::resolve_scoped("jellyfin", name, "token")?
+        .expose_secret()
+        .clone();
     Ok(Client::new(Config::new(row.base_url, token)))
 }
 
