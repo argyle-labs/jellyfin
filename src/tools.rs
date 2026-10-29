@@ -23,6 +23,7 @@
 
 use plugin_toolkit::notify::{emit, registered_backend_names, Event, EventClass, Severity};
 use plugin_toolkit::prelude::*;
+use plugin_toolkit::secrets;
 
 use crate::diag::SessionTranscodeHealth;
 use crate::{Client, Config, ServerInfo, VirtualFolder};
@@ -50,7 +51,14 @@ pub(crate) fn make_client(name: &str) -> Result<Client> {
     if !row.enabled {
         bail!("jellyfin endpoint '{name}' is disabled");
     }
-    Ok(Client::new(Config::new(row.base_url, row.token)))
+    // `endpoint_db::get` never populates `#[secret]` fields (so list/detail
+    // can't leak the token) — read the real value from the secrets store
+    // under the same `scoped_name` key create/update wrote it to.
+    let key = secrets::scoped_name("jellyfin", name, "token")?;
+    let token = secrets::get(key.as_str())?
+        .map(|s| s.expose_secret().clone())
+        .with_context(|| format!("jellyfin endpoint '{name}' has no stored token"))?;
+    Ok(Client::new(Config::new(row.base_url, token)))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
