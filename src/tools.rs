@@ -51,9 +51,6 @@ pub(crate) fn make_client(name: &str) -> Result<Client> {
     if !row.enabled {
         bail!("jellyfin endpoint '{name}' is disabled");
     }
-    // `endpoint_db::get` never populates `#[secret]` fields (so list/detail
-    // can't leak the token) — read the real value from the secrets store
-    // under the same `scoped_name` key create/update wrote it to.
     let token = secrets::resolve_scoped("jellyfin", name, "token")?
         .expose_secret()
         .clone();
